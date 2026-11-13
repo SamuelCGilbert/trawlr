@@ -1,0 +1,12 @@
+# Run by the "New window" global hotkey (Tools > Options > Keyboard). Its own
+# entry, not an action of the main one: KDE reads an entry's actions once per
+# session, so an action added by an update would not run until the next login.
+[Desktop Entry]
+Type=Application
+Name=Trawlr: New Window
+Exec=trawlr-gui --new-window
+Icon=io.trawlr.Trawlr
+NoDisplay=true
+Terminal=false
+StartupNotify=true
+StartupWMClass=trawlr

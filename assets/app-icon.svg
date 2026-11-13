@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="6" y1="2" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8487ff"/>
+      <stop offset="1" stop-color="#4a3fd6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="32" y1="2" x2="32" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)"/>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#shine)"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="14.5" fill="none" stroke="#ffffff" stroke-opacity="0.2"/>
+  <rect x="12" y="15" width="22" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.42"/>
+  <rect x="12" y="25" width="15" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.42"/>
+  <rect x="12" y="35" width="10" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.42"/>
+  <circle cx="36.5" cy="33" r="11" fill="#ffffff" fill-opacity="0.14" stroke="#ffffff" stroke-width="5"/>
+  <path d="M44.6 41.1 L51 47.5" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+</svg>

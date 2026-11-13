@@ -1,0 +1,4 @@
+/target
+/gui/build
+/gui/tests/build
+*.user

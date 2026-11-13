@@ -1,0 +1,16 @@
+# Per-user alternative to the system service, for when you cannot or do not
+# want to run a root daemon. It indexes your home folder only and watches it
+# folder by folder, which is limited by fs.fanotify.max_user_marks.
+#
+#   install -Dm644 dist/trawlrd-user.service ~/.config/systemd/user/trawlrd.service
+#   systemctl --user enable --now trawlrd
+[Unit]
+Description=Trawlr file index for this user
+
+[Service]
+ExecStart=/usr/local/bin/trawlrd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

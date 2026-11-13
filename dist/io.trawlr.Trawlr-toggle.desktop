@@ -1,0 +1,11 @@
+# Run by the "Toggle window" global hotkey (Tools > Options > Keyboard).
+# See io.trawlr.Trawlr-new-window.desktop for why it is an entry of its own.
+[Desktop Entry]
+Type=Application
+Name=Trawlr: Show or Hide Window
+Exec=trawlr-gui --toggle
+Icon=io.trawlr.Trawlr
+NoDisplay=true
+Terminal=false
+StartupNotify=true
+StartupWMClass=trawlr

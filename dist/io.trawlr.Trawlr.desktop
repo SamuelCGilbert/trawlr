@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Trawlr
+GenericName=File Search
+Comment=Find any file or folder instantly by name
+Exec=trawlr-gui
+Icon=io.trawlr.Trawlr
+Terminal=false
+Categories=Utility;FileTools;Qt;
+Keywords=search;find;locate;files;folders;
+StartupNotify=true
+StartupWMClass=trawlr
+Actions=NewWindow;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=trawlr-gui --new-window

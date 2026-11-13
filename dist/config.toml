@@ -1,0 +1,34 @@
+# trawlrd configuration. Restart the service after editing:
+#   sudo systemctl restart trawlrd
+# Changing roots, excludes or filesystem types rebuilds the index.
+
+# Folders to index. Everything beneath them is included, across mount points
+# of local disks.
+#roots = ["/"]
+
+# Folders (or single files) to leave out, with everything beneath them.
+# Backup snapshots are the usual candidates: they hold a second copy of every
+# file name on the system.
+#exclude = ["/timeshift", "/var/lib/docker"]
+
+# Names to leave out wherever they appear. * and ? are wildcards.
+#exclude_names = ["node_modules", ".git", "*.tmp"]
+
+# Local disk filesystems are indexed automatically; virtual and network ones
+# (tmpfs, overlay, nfs, cifs, ...) are not. List types to add here. Changes on
+# network filesystems made by other machines are not reported to this one, so
+# such an index is only as fresh as the last check.
+#extra_fs_types = ["tmpfs"]
+
+# Users allowed to search the system-wide index, by name or numeric id. The
+# index reveals the names of all files, including ones a user could not list
+# themselves. "*" allows every local user. root is always allowed.
+allowed_users = []
+
+# The index lives in memory and is written to disk at shutdown and, while it
+# has unsaved changes, this often. A crash loses nothing: the next start
+# compares the saved index with the disk.
+#save_interval_minutes = 360
+
+# Threads used to walk the disk. Default: twice the number of CPUs.
+#scan_threads = 8

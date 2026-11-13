@@ -1,0 +1,47 @@
+[Unit]
+Description=Trawlr file index (instant file-name search)
+Documentation=man:fanotify(7)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/trawlrd
+Restart=on-failure
+RestartSec=2
+# Saving a large index on shutdown takes a few seconds.
+TimeoutStopSec=90
+
+RuntimeDirectory=trawlrd
+RuntimeDirectoryMode=0755
+StateDirectory=trawlrd
+StateDirectoryMode=0700
+
+# Indexing should never get in the way of interactive work.
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+# The daemon has to see every file name, which takes two capabilities:
+# CAP_SYS_ADMIN for filesystem-wide fanotify and CAP_DAC_READ_SEARCH to list
+# folders regardless of their permissions. It needs nothing else, so it gets
+# nothing else: no other capability, no network, and a read-only view of the
+# whole system apart from its own state and runtime directories.
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
