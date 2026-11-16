@@ -16,6 +16,7 @@ jobs:
         image: ['ubuntu:22.04', 'ubuntu:24.04', 'debian:12', 'debian:13', 'fedora:latest', 'opensuse/tumbleweed:latest']
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     container: ${{ matrix.image }}
     steps:
       - name: Install build tools
@@ -45,6 +46,7 @@ jobs:
 
   arch:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     container: archlinux:latest
     steps:
       - run: pacman -Syu --noconfirm --needed base-devel git qt6-base rust python
@@ -67,6 +69,7 @@ jobs:
     needs: [package, arch]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
