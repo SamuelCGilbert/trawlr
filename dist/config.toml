@@ -7,9 +7,12 @@
 #roots = ["/"]
 
 # Folders (or single files) to leave out, with everything beneath them.
-# Backup snapshots are the usual candidates: they hold a second copy of every
-# file name on the system.
-#exclude = ["/timeshift", "/var/lib/docker"]
+#exclude = ["/var/lib/docker", "/srv/archive"]
+
+# Backup snapshots (Timeshift, Snapper: folders named .snapshots and
+# timeshift/snapshots) repeat every file name on the system, often many times
+# over, so they are left out. Set this to index them anyway.
+#index_snapshots = true
 
 # Names to leave out wherever they appear. * and ? are wildcards.
 #exclude_names = ["node_modules", ".git", "*.tmp"]
@@ -24,6 +27,11 @@
 # index reveals the names of all files, including ones a user could not list
 # themselves. "*" allows every local user. root is always allowed.
 allowed_users = []
+
+# Groups whose members may search it as well. Members of the administrator
+# groups can read every file anyway, so this reveals nothing new to them. Add
+# other people with: sudo usermod -aG trawlr NAME
+allowed_groups = ["sudo", "wheel", "admin", "trawlr"]
 
 # The index lives in memory and is written to disk at shutdown and, while it
 # has unsaved changes, this often. A crash loses nothing: the next start

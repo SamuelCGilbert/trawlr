@@ -1,0 +1,80 @@
+# Push a tag such as v0.1.0 to build packages for each distribution and
+# processor and attach them to a draft GitHub release, to check and publish.
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:22.04', 'ubuntu:24.04', 'debian:12', 'debian:13', 'fedora:latest', 'opensuse/tumbleweed:latest']
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install build tools
+        run: |
+          # actions/checkout needs tar and git inside the container.
+          if command -v apt-get >/dev/null; then apt-get update -q && apt-get install -yq git
+          elif command -v dnf >/dev/null; then dnf install -yq git tar
+          else zypper -nq install git tar gzip; fi
+      - uses: actions/checkout@v4
+      - run: sh dist/build-deps.sh package
+      - name: Build
+        run: |
+          [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+          cargo build --release --locked
+          cargo test --release --locked
+          for q in qmake6 qmake-qt6 qmake; do command -v $q >/dev/null && break; done
+          mkdir -p gui/build && cd gui/build && $q ../trawlr.pro && make -j"$(nproc)"
+      - name: Package
+        run: |
+          if command -v dpkg-deb >/dev/null; then sh dist/package.sh deb; else sh dist/package.sh rpm; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ strategy.job-index }}
+          path: dist/out/*
+
+  arch:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - run: pacman -Syu --noconfirm --needed base-devel git qt6-base rust python
+      - uses: actions/checkout@v4
+      - name: Build the PKGBUILD from this checkout
+        run: |
+          useradd -m builder
+          v=$(sed -n 's/^pkgver=//p' dist/arch/PKGBUILD)
+          tar --exclude=./.git --transform "s,^\.,trawlr-$v," -czf /home/builder/trawlr-$v.tar.gz .
+          cp dist/arch/PKGBUILD dist/arch/trawlr.install /home/builder/
+          chown -R builder /home/builder
+          su builder -c 'cd ~ && makepkg -f'
+          mkdir -p dist/out && cp /home/builder/trawlr-*.pkg.tar.zst dist/out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-arch
+          path: dist/out/*
+
+  release:
+    needs: [package, arch]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: out
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out && sha256sum * > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
+            --title "Trawlr ${GITHUB_REF_NAME#v}" *

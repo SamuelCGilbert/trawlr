@@ -195,14 +195,14 @@ fn handle(sh: Arc<Shared>, stream: UnixStream) {
     let uid = peer_uid(&stream);
     let me = unsafe { libc::geteuid() };
     let allowed = match uid {
-        Some(u) => u == 0 || u == me || sh.settings.allow_all || sh.settings.allowed_uids.contains(&u),
+        Some(u) => u == me || sh.settings.may_search(u),
         None => false,
     };
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
     let Ok(read_half) = stream.try_clone() else { return };
     let session = Arc::new(SessionShared { query: Mutex::new(None), notified: AtomicBool::new(false), out: Mutex::new(stream) });
     if !allowed {
-        session.send(&json!({"ok": false, "error": "this user is not allowed to search the system index (see allowed_users in /etc/trawlrd/config.toml)"}));
+        session.send(&json!({"ok": false, "error": "this user is not allowed to search the system index (see allowed_users and allowed_groups in /etc/trawlrd/config.toml)"}));
         return;
     }
     sh.sessions.lock().push(session.clone());

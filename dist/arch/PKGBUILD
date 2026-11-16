@@ -1,0 +1,47 @@
+# Maintainer: Sam Gilbert <sam@trawlr.io>
+# Arch Linux package, built from a tagged release's source. For the AUR, run
+# `updpkgsums` after changing pkgver.
+pkgname=trawlr
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Instant file-name search with a live, always-current index"
+arch=(x86_64 aarch64)
+url="https://trawlr.io"
+license=(GPL-3.0-or-later)
+depends=(qt6-base systemd gcc-libs glibc)
+makedepends=(cargo)
+optdepends=('qt6-wayland: native Wayland window')
+backup=(etc/trawlrd/config.toml)
+# makepkg's link-time optimisation breaks linking the bundled zstd C library,
+# and the release build carries no debug information to split off.
+options=(!lto !debug)
+install=trawlr.install
+_repo=https://github.com/SamuelCGilbert/trawlr
+source=("$pkgname-$pkgver.tar.gz::$_repo/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=(SKIP)
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+    cargo build --frozen --release
+    mkdir -p gui/build
+    cd gui/build
+    qmake6 ../trawlr.pro
+    make
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    cargo test --frozen --release
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    sh dist/package.sh stage "$pkgdir"
+}

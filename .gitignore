@@ -2,3 +2,4 @@
 /gui/build
 /gui/tests/build
 *.user
+/dist/out

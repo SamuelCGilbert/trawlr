@@ -39,7 +39,7 @@ mount -t vfat /dev/vdc /mnt/vfat || bad "mount vfat"
 echo "kernel $(uname -r), rootfs is $(grep ' / ' /proc/mounts | cut -d' ' -f3)"
 
 echo "=== A. system service: whole machine, default settings"
-printf 'allowed_users = ["sam"]\n' > /etc/trawlrd/config.toml
+printf 'allowed_users = ["sam"]\nallowed_groups = ["wheel", "no-such-group"]\n' > /etc/trawlrd/config.toml
 mkdir -p /mnt/ext4/data/docs /mnt/ext4/private
 echo x > /mnt/ext4/data/docs/Report.PDF
 echo s > /mnt/ext4/private/secret.txt; chown -R 1001:1001 /mnt/ext4/private; chmod 700 /mnt/ext4/private
@@ -94,6 +94,7 @@ umount /mnt/usb; sleep 1
 echo "--- who may search"
 expect "an allowed user can search" "/mnt/ext4/data/docs/Report.PDF" as_user 1000 trawlr report
 expect "and sees names in folders closed to them" "/mnt/ext4/private/secret.txt" as_user 1000 trawlr secret.txt
+expect "a member of an allowed group can search" "/mnt/ext4/data/docs/Report.PDF" as_user 1002 trawlr report
 expect "another user is refused" "2" sh -c '/ul/setpriv --reuid 1001 --regid 1001 --clear-groups trawlr report >/dev/null 2>&1; echo $?'
 
 echo "--- restart"

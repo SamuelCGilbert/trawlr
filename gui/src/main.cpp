@@ -2,6 +2,7 @@
 #include "instance.h"
 #include "mainwindow.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QIcon>
 #include <QLockFile>

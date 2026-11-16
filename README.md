@@ -29,7 +29,23 @@ keeps an index in memory. This does the same with what Linux offers.
 
 ## Install
 
-Needs Linux 5.9 or newer, systemd, a Rust toolchain, and Qt 6 for the window.
+Needs Linux 5.9 or newer and systemd. Packages for each release are on the
+[Releases](../../releases) page:
+
+| Distribution | Package | Install with |
+| --- | --- | --- |
+| Ubuntu 22.04, 24.04, Debian 12, 13 (and derivatives such as Mint, Pop!_OS, KDE neon) | `trawlr_…~ubuntu24.04_amd64.deb` (pick your release) | `sudo apt install ./trawlr_….deb` |
+| Fedora | `trawlr-….fc45.x86_64.rpm` | `sudo dnf install ./trawlr-….rpm` |
+| openSUSE Tumbleweed | `trawlr-….tumbleweed.x86_64.rpm` | `sudo zypper install ./trawlr-….rpm` |
+| Arch, Manjaro, EndeavourOS | `dist/arch/PKGBUILD` (AUR) | `makepkg -si` |
+
+There are `arm64`/`aarch64` builds as well. The packages start the service straight away (on Arch:
+`sudo systemctl enable --now trawlrd`). Members of the administrator group (`sudo` or `wheel`)
+can search; see [Who can search](#who-can-search) to let others in.
+
+### From source
+
+Needs a Rust toolchain (1.85 or newer) and Qt 6.2 or newer for the window.
 
 ```sh
 # Debian / Ubuntu / KDE neon
@@ -39,6 +55,9 @@ sudo apt install cargo build-essential qt6-base-dev
 
 ./install.sh
 ```
+
+Debian 12 and Ubuntu 24.04 or older package a Rust that is too old; `install.sh` says so and
+points to [rustup.rs](https://rustup.rs), which installs a current one without root.
 
 `install.sh` builds as you, then asks for your sudo password once to install to `/usr/local`, write
 `/etc/trawlrd/config.toml` and start the service. The first scan takes from a few seconds to a
@@ -164,9 +183,10 @@ Matching is case-insensitive unless asked otherwise. Results are sorted by name 
 
 ```toml
 roots = ["/"]                                   # what to index
-exclude = ["/home/timeshift", "/var/lib/docker"]  # folders to leave out
+exclude = ["/var/lib/docker"]                   # folders to leave out
 exclude_names = ["node_modules"]                # names to leave out everywhere
 allowed_users = ["sam"]                         # who may search
+allowed_groups = ["sudo", "wheel", "trawlr"]    # ... and members of these groups
 ```
 
 Apply changes with `sudo systemctl restart trawlrd`.
@@ -174,8 +194,8 @@ Apply changes with `sudo systemctl restart trawlrd`.
 Local disk filesystems are indexed across mount points automatically, and drives are added and
 removed as they are mounted and unmounted. Virtual filesystems (`/proc`, tmpfs, overlay, snap
 images) and network mounts are skipped unless listed in `extra_fs_types` or named as a root.
-The installer excludes Timeshift and Snapper snapshot folders it finds, because they contain a
-second copy of every file name on the system.
+Timeshift and Snapper snapshot folders are left out, because they contain another copy of every
+file name on the system (set `index_snapshots = true` to include them).
 
 ## Who can search
 
@@ -183,9 +203,12 @@ The service runs as root, since only root may watch a whole filesystem, and it t
 name of every file on the machine, including files in other users' homes. Names only: it never
 reads file contents.
 
-- Only users listed in `allowed_users` (plus root) can query it. The installer adds the user who
-  ran it. A listed user can see names in folders they could not otherwise list, so on a shared
-  machine treat that list like membership of an admin group.
+- Only root, users listed in `allowed_users` and members of the groups in `allowed_groups` can
+  query it. By default those groups are the administrator groups (`sudo`, `wheel`, `admin`), whose
+  members can read every file anyway, and `trawlr`, which the installer creates for everyone else:
+  `sudo usermod -aG trawlr NAME`. The installer also adds the user who ran it to `allowed_users`.
+  Anyone allowed in can see names in folders they could not otherwise list, so on a shared machine
+  treat it like membership of an admin group.
 - The service is confined by systemd to exactly what it needs: two capabilities
   (`CAP_SYS_ADMIN` for fanotify, `CAP_DAC_READ_SEARCH` to list folders), no network, and a read-only
   view of the system apart from its own state directory. See [`dist/trawlrd.service`](dist/trawlrd.service).
@@ -240,7 +263,8 @@ trawlr --rescan                # compare the whole index with the disk now
 trawlr --rebuild               # throw the index away and start over
 ```
 
-"this user is not allowed to search the system index": add the user to `allowed_users` in
+"this user is not allowed to search the system index": add the user to the `trawlr` group
+(`sudo usermod -aG trawlr NAME`, no restart needed), or to `allowed_users` in
 `/etc/trawlrd/config.toml` and restart the service.
 
 ## Development
@@ -254,12 +278,26 @@ tests/vm/run.sh                # the same and more as root inside a throwaway QE
 
 # the window itself, driven off screen against a real daemon
 (mkdir -p gui/tests/build && cd gui/tests/build && qmake6 ../tests.pro && make && QT_QPA_PLATFORM=offscreen ./tst_gui)
+
+tests/distros/run.sh           # in docker: build, install, test and package on Ubuntu, Debian,
+                               # Fedora, openSUSE and Arch
 ```
+
+Releases: push a tag such as `v0.1.0` and [`release.yml`](.github/workflows/release.yml) builds
+the packages ([`dist/package.sh`](dist/package.sh), [`dist/arch/PKGBUILD`](dist/arch/PKGBUILD))
+for x86_64 and arm64 and attaches them to a draft release.
 
 The layout: [`src/index.rs`](src/index.rs) is the in-memory index, [`src/query.rs`](src/query.rs)
 the search language and matcher, [`src/scan.rs`](src/scan.rs) reads directories,
 [`src/watch.rs`](src/watch.rs) wraps fanotify, [`src/indexer.rs`](src/indexer.rs) is the single
 writer that ties them together, [`src/server.rs`](src/server.rs) the socket protocol, and
 [`gui/`](gui) the Qt client.
+
+## License
+
+Copyright © 2026 Sam Gilbert. Trawlr is free software: you can redistribute it and/or
+modify it under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any later
+version. See [`LICENSE`](LICENSE).
 
 Created in [T3 Code](https://t3.codes).

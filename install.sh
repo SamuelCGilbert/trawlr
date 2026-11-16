@@ -40,6 +40,17 @@ if [ -n "$missing" ]; then
     exit 1
 fi
 
+# Long-term releases (Debian 12, Ubuntu 24.04 and older) package a Rust that
+# is too old for the libraries trawlr uses.
+need=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+have=$(cargo --version 2>/dev/null | cut -d' ' -f2)
+if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" != "$need" ]; then
+    echo "Rust $need or newer is needed; this system has $have." >&2
+    echo "  Install a current one from https://rustup.rs (no root needed), then run this again:" >&2
+    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
+    exit 1
+fi
+
 echo "==> Building trawlrd and trawlr"
 cargo build --release
 if [ $GUI = 1 ]; then

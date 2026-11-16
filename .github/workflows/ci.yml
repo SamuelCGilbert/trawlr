@@ -1,0 +1,29 @@
+# Build and test every push and pull request.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends build-essential qt6-base-dev qt6-base-dev-tools libgl-dev
+          rustup toolchain install stable --profile minimal
+      - name: Build
+        run: |
+          cargo build --release --locked
+          mkdir -p gui/build && cd gui/build && qmake6 ../trawlr.pro && make -j"$(nproc)"
+      - name: Daemon tests
+        run: cargo test --release --locked
+      - name: Window tests
+        run: |
+          mkdir -p gui/tests/build && cd gui/tests/build && qmake6 ../tests.pro && make -j"$(nproc)"
+          QT_QPA_PLATFORM=offscreen ./tst_gui
+      - name: Stress test
+        run: python3 tests/stress.py --rounds 10

@@ -1,0 +1,12 @@
+post_install() {
+    echo "Start the file index with:  sudo systemctl enable --now trawlrd"
+    echo "Administrators (wheel) can search; add others with:  sudo usermod -aG trawlr NAME"
+}
+
+post_upgrade() {
+    systemctl try-restart trawlrd 2>/dev/null || true
+}
+
+pre_remove() {
+    systemctl disable --now trawlrd 2>/dev/null || true
+}

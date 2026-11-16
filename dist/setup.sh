@@ -58,6 +58,11 @@ if [ "$GUI" = 1 ]; then
 fi
 
 if [ "$MODE" = system ]; then
+    # People who are not administrators can be let in by adding them to this
+    # group (see allowed_groups in the configuration).
+    if ! getent group trawlr >/dev/null 2>&1; then
+        groupadd -r trawlr 2>/dev/null || addgroup --system trawlr >/dev/null 2>&1 || true
+    fi
     install -Dm644 "$SRC/dist/trawlrd.service" "$UNIT"
 else
     install -Dm644 "$SRC/dist/trawlrd-user.service" "$UNIT"
@@ -69,26 +74,18 @@ if [ ! -e "$CONF" ]; then
     cp "$SRC/dist/config.toml" "$CONF"
     if [ "$MODE" = system ]; then
         [ "$WHO" = root ] || sed -i "s|^allowed_users = \[\]|allowed_users = [\"$WHO\"]|" "$CONF"
-        # Backup snapshots repeat every file name on the system, often many
-        # times over. Leave the ones we can recognise out of the index.
-        skip=
-        for mp in $(findmnt -rn -o TARGET -t ext2,ext3,ext4,btrfs,xfs,f2fs,zfs,bcachefs 2>/dev/null); do
-            base=${mp%/}
-            [ -d "$base/timeshift/snapshots" ] && skip="$skip, \"$base/timeshift\""
-            [ -d "$base/.snapshots" ] && skip="$skip, \"$base/.snapshots\""
-        done
-        if [ -n "$skip" ]; then
-            sed -i "s|^#exclude = .*|exclude = [${skip#, }]|" "$CONF"
-            echo "    not indexing backup snapshots: ${skip#, }  (edit $CONF to change)"
-        fi
     else
-        sed -i 's|^allowed_users = \[\]|#allowed_users = []|' "$CONF"
+        sed -i -e 's|^allowed_users = \[\]|#allowed_users = []|' -e 's|^allowed_groups = |#allowed_groups = |' "$CONF"
     fi
     echo "    wrote $CONF"
 else
     echo "    keeping existing $CONF"
     if [ "$MODE" = system ] && [ "$WHO" != root ] && ! grep -q "\"$WHO\"\|\"\\*\"" "$CONF"; then
-        echo "    note: $WHO is not in allowed_users there and will not be able to search"
+        ok=
+        for g in $(id -nG "$WHO" 2>/dev/null); do
+            grep -q "^allowed_groups = .*\"$g\"" "$CONF" && ok=1
+        done
+        [ -n "$ok" ] || echo "    note: $WHO is not in allowed_users or allowed_groups there and will not be able to search"
     fi
 fi
 

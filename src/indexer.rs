@@ -481,8 +481,16 @@ impl Indexer {
     /// Open directory `slot` by its indexed path and confirm it is the
     /// directory the index means.
     fn ensure_fd(&mut self, slot: usize, fds: &mut HashMap<usize, DirFd>) -> bool {
-        if fds.contains_key(&slot) {
-            return true;
+        if let Some(open) = fds.get(&slot) {
+            // An earlier event of this batch may have removed the folder that
+            // was opened here and given its slot to a new one; the descriptor
+            // then points at the wrong folder.
+            let idx = self.sh.index.read();
+            if idx.dir(slot).entry != NONE && idx.dir_handle(slot) == &open.handle[..] {
+                return true;
+            }
+            drop(idx);
+            fds.remove(&slot);
         }
         let (path, handle, fs) = {
             let idx = self.sh.index.read();

@@ -2,7 +2,12 @@
 name = "trawlr"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 description = "Instant file-name search for Linux with a live, always-current index"
+license = "GPL-3.0-or-later"
+authors = ["Sam Gilbert <sam@trawlr.io>"]
+homepage = "https://trawlr.io"
+repository = "https://github.com/SamuelCGilbert/trawlr"
 
 [lib]
 name = "trawlr"

@@ -78,8 +78,8 @@ for mod in btrfs nls_cp437 nls_iso8859_1; do
     done
 done
 
-printf 'root:x:0:0:root:/root:/bin/sh\nsam:x:1000:1000::/tmp:/bin/sh\nother:x:1001:1001::/tmp:/bin/sh\n' > "$ST/etc/passwd"
-printf 'root:x:0:\nsam:x:1000:\nother:x:1001:\n' > "$ST/etc/group"
+printf 'root:x:0:0:root:/root:/bin/sh\nsam:x:1000:1000::/tmp:/bin/sh\nother:x:1001:1001::/tmp:/bin/sh\nadmin:x:1002:1002::/tmp:/bin/sh\n' > "$ST/etc/passwd"
+printf 'root:x:0:\nwheel:x:10:admin\nsam:x:1000:\nother:x:1001:\nadmin:x:1002:\n' > "$ST/etc/group"
 cp "$HERE/guest.sh" "$ST/init"
 chmod +x "$ST/init"
 

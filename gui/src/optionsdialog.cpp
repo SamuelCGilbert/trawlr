@@ -51,7 +51,9 @@ static QKeySequenceEdit *keyEdit(QWidget *parent)
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     e->setMaximumSequenceLength(1);
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
     e->setClearButtonEnabled(true);
+#endif
     return e;
 }
 
