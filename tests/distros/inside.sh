@@ -4,7 +4,8 @@ set -eu
 step() { echo "STEP $*"; }
 
 step installing build dependencies
-command -v tar >/dev/null || zypper -nq install tar gzip
+# The Tumbleweed image's busybox-gawk blocks the real gawk that rpm-build needs.
+if command -v zypper >/dev/null; then zypper -nq install --force-resolution tar gzip gawk; fi
 mkdir -p /work && cd /work
 tar -C /src --exclude=./target --exclude=./gui/build --exclude=./gui/tests/build --exclude=./.git -cf - . | tar -xf -
 sh dist/build-deps.sh package
