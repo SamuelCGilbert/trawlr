@@ -1,20 +1,58 @@
 //! The indexing daemon.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::Ordering;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicU64, AtomicU8};
+#[cfg(target_os = "linux")]
 use std::sync::mpsc::channel;
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use std::time::Instant;
 
-use trawlr::config::{Overrides, Settings};
-use trawlr::index::Index;
-use trawlr::indexer::{self, Msg, Shared, ST_STARTING};
-use trawlr::mounts::FsRegistry;
-use trawlr::scan::ScanCtx;
-use trawlr::watch::Watcher;
-use trawlr::{info, server, util, warn};
+#[cfg(target_os = "linux")]
 use parking_lot::{Mutex, RwLock};
+#[cfg(target_os = "linux")]
+use trawlr::config::Settings;
+use trawlr::config::Overrides;
+#[cfg(target_os = "linux")]
+use trawlr::index::Index;
+#[cfg(target_os = "linux")]
+use trawlr::indexer::{self, Msg, Shared, ST_STARTING};
+#[cfg(target_os = "linux")]
+use trawlr::mounts::FsRegistry;
+#[cfg(target_os = "linux")]
+use trawlr::scan::ScanCtx;
+#[cfg(target_os = "linux")]
+use trawlr::watch::Watcher;
+use trawlr::util;
+#[cfg(target_os = "linux")]
+use trawlr::{info, server, warn};
 
+#[cfg(windows)]
+const HELP: &str = "\
+trawlrd - keeps a live index of every file name and answers searches
+
+Usage: trawlrd [options]
+
+Runs as the Windows service \"trawlrd\" (installed with the program). It
+reads the master file table of every local NTFS drive and follows their
+change journals. Run in an administrator console to test it in the open.
+
+Options:
+  --install-service    register and start the service (as administrator)
+  --uninstall-service  stop and remove the service
+  --config FILE        configuration file
+                       (default C:\\ProgramData\\Trawlr\\config.toml)
+  --root DRIVE         index DRIVE (C:) instead of every NTFS drive (repeatable)
+  --db PATH            where the index is saved
+  --debug              verbose logging
+  -h, --help           show this help
+  -V, --version        show the version
+";
+
+#[cfg(target_os = "linux")]
 const HELP: &str = "\
 trawlrd - keeps a live index of every file name and answers searches
 
@@ -38,12 +76,31 @@ Options:
   -V, --version   show the version
 ";
 
-fn parse_args() -> Result<Overrides, String> {
+#[derive(PartialEq)]
+enum Mode {
+    Run,
+    #[cfg(windows)]
+    Service,
+    #[cfg(windows)]
+    Install,
+    #[cfg(windows)]
+    Uninstall,
+}
+
+fn parse_args() -> Result<(Overrides, Mode), String> {
     let mut ov = Overrides::default();
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut mode = Mode::Run;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
         match a.as_str() {
+            #[cfg(windows)]
+            "--service" => mode = Mode::Service,
+            #[cfg(windows)]
+            "--install-service" => mode = Mode::Install,
+            #[cfg(windows)]
+            "--uninstall-service" => mode = Mode::Uninstall,
             "--config" => ov.config = Some(PathBuf::from(value("--config")?)),
             "--socket" => ov.socket = Some(PathBuf::from(value("--socket")?)),
             "--db" => ov.db = Some(PathBuf::from(value("--db")?)),
@@ -62,9 +119,38 @@ fn parse_args() -> Result<Overrides, String> {
             other => return Err(format!("unknown option {other:?} (try --help)")),
         }
     }
-    Ok(ov)
+    Ok((ov, mode))
 }
 
+#[cfg(windows)]
+fn main() {
+    use trawlr::win::service;
+    let (ov, mode) = match parse_args() {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("trawlrd: {e}");
+            std::process::exit(2);
+        }
+    };
+    let done = |r: Result<(), String>, what: &str| match r {
+        Ok(()) => {
+            println!("trawlrd: {what}");
+            std::process::exit(0)
+        }
+        Err(e) => {
+            eprintln!("trawlrd: {e}");
+            std::process::exit(1)
+        }
+    };
+    match mode {
+        Mode::Install => done(service::install(), "the service is installed and running"),
+        Mode::Uninstall => done(service::uninstall(), "the service is removed"),
+        Mode::Service => std::process::exit(service::run_service(ov)),
+        Mode::Run => std::process::exit(service::run_console(ov)),
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn raise_fd_limit() {
     unsafe {
         let mut lim: libc::rlimit = std::mem::zeroed();
@@ -75,8 +161,9 @@ fn raise_fd_limit() {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn main() {
-    let settings = match parse_args().and_then(Settings::load) {
+    let settings = match parse_args().and_then(|(ov, _)| Settings::load(ov)) {
         Ok(s) => Arc::new(s),
         Err(e) => {
             eprintln!("trawlrd: {e}");

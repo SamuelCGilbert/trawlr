@@ -1,10 +1,12 @@
 #include "globalhotkey.h"
 #include "instance.h"
 #include "mainwindow.h"
+#include "platform.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QIcon>
+#include <QLocalSocket>
 #include <QLockFile>
 #include <QSettings>
 #include <QTimer>
@@ -41,6 +43,8 @@ int main(int argc, char **argv)
     QString shot;
     bool newWindow = false;
     bool toggle = false;
+    // Started with the session (Windows): only the tray icon and hotkeys.
+    bool background = false;
     const QStringList args = QApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
         if (args[i] == QLatin1String("--version")) {
@@ -65,6 +69,10 @@ int main(int argc, char **argv)
             toggle = true;
             continue;
         }
+        if (args[i] == QLatin1String("--background")) {
+            background = true;
+            continue;
+        }
         // Undocumented, for automated checks: render the window to a PNG and exit.
         if (args[i] == QLatin1String("--screenshot") && i + 1 < args.size()) {
             shot = args[++i];
@@ -81,7 +89,7 @@ int main(int argc, char **argv)
         // Launches that start at the same moment would all find nobody listening
         // and all decide to be the first. One at a time through this part, then.
         // (If the lock cannot be had in time, carry on without it.)
-        QLockFile startLock(path + QStringLiteral(".lock"));
+        QLockFile startLock(Instance::lockPath(path));
         startLock.tryLock(3000);
         LaunchRequest req;
         req.search = words.join(QLatin1Char(' '));
@@ -90,12 +98,27 @@ int main(int argc, char **argv)
         // The desktop sets one of these in the environment of a program it launches
         // for a keypress or click; it is what lets the running window take focus.
         req.activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN", qEnvironmentVariable("DESKTOP_STARTUP_ID"));
-        switch (Instance::forward(path, req)) {
+        // A background start finding Trawlr already running has nothing to do.
+        if (background) {
+            QLocalSocket probe;
+            probe.connectToServer(path);
+            if (probe.waitForConnected(500))
+                return 0;
+        }
+        switch (background ? Instance::NoInstance : Instance::forward(path, req)) {
         case Instance::Handled:
             return 0;
         case Instance::NoInstance:
             if (instance.listen(path)) {
                 QObject::connect(&instance, &Instance::requested, &app, [](const LaunchRequest &r) { MainWindow::handleLaunch(r); });
+                // Where this program hears the hotkeys itself (Windows), a key
+                // does what a launch with the matching option would.
+                GlobalHotkey::setHandler([](GlobalHotkey::Action a) {
+                    LaunchRequest r;
+                    r.newWindow = a == GlobalHotkey::NewWindow;
+                    r.toggle = a == GlobalHotkey::ToggleWindow;
+                    MainWindow::handleLaunch(r);
+                });
                 QTimer::singleShot(0, &app, [] { GlobalHotkey::migrate(); });
             }
             else if (Instance::forward(path, req) == Instance::Handled)
@@ -106,6 +129,10 @@ int main(int argc, char **argv)
         }
     }
 
+    if (background && shot.isEmpty()) {
+        MainWindow::updateTrayIcon();
+        return app.exec();
+    }
     MainWindow *w = new MainWindow(words.join(QLatin1Char(' ')));
     w->setAttribute(Qt::WA_DeleteOnClose);
     // A screenshot run can render without ever putting a window on screen.

@@ -1,4 +1,5 @@
 #include "optionsdialog.h"
+#include "platform.h"
 #include "terminal.h"
 #include "theme.h"
 
@@ -280,6 +281,16 @@ QWidget *OptionsDialog::buildGeneralPage()
     trayHint->setContentsMargins(22, 0, 0, 0);
     layout->addWidget(m_tray);
     layout->addWidget(trayHint);
+    if (Platform::hasStartAtLogin()) {
+        layout->addSpacing(8);
+        m_autostart = new QCheckBox(tr("Start Trawlr when I sign in"), page);
+        m_autostart->setObjectName("startAtLogin");
+        m_autostart->setChecked(Platform::startsAtLogin());
+        auto *autoHint = hintLabel(tr("It starts in the tray, so the global hotkeys work from the start."), page);
+        autoHint->setContentsMargins(22, 0, 0, 0);
+        layout->addWidget(m_autostart);
+        layout->addWidget(autoHint);
+    }
     layout->addSpacing(14);
 
     auto *form = new QFormLayout;
@@ -503,8 +514,13 @@ QWidget *OptionsDialog::buildKeyboardPage()
     if (!canSet)
         note = tr("This desktop does not let programs set a global hotkey. Bind keys in your desktop's keyboard settings to the commands "
                   "<b>trawlr</b>, <b>trawlr --new-window</b> and <b>trawlr --toggle</b>.");
+#ifdef Q_OS_WIN
+    else
+        note = tr("These work from any program while Trawlr is running, including from the tray with no window open.");
+#else
     else
         note = tr("These work from any program, even when no Trawlr window is open.");
+#endif
     if (needsInstall)
         note += QLatin1Char(' ') + tr("The greyed-out ones need the newer launcher entry: run <b>./install.sh</b> again.");
     gform->addRow(hintLabel(note, global));
@@ -971,6 +987,8 @@ bool OptionsDialog::apply()
     QSettings s;
     s.setValue(kMultiple, m_multiple->isChecked());
     s.setValue(kTray, m_tray->isChecked());
+    if (m_autostart && m_autostart->isChecked() != Platform::startsAtLogin())
+        Platform::setStartAtLogin(m_autostart->isChecked());
     s.setValue(QStringLiteral("general/pathDoubleClick"), m_pathClick->currentData().toString());
     s.setValue(QStringLiteral("terminal/program"), m_terminal->currentData().toString());
     s.setValue(QStringLiteral("terminal/custom"), m_terminalCustom->text().trimmed());

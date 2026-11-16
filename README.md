@@ -2,8 +2,8 @@
 
 # Trawlr
 
-Instant file-name search for Linux with an index that is always current, in the spirit of
-[voidtools' Everything](https://www.voidtools.com/) for Windows.
+Instant file-name search for Linux and Windows with an index that is always current, in the
+spirit of [voidtools' Everything](https://www.voidtools.com/).
 
 Type a few letters and every matching file and folder on the machine is listed before you finish the
 word. Files appear in the results the moment they are created, and vanish when they are deleted, with
@@ -14,7 +14,7 @@ Not affiliated with voidtools.
 ## How it works
 
 voidtools' Everything is fast on Windows because it never walks the disk: it reads the NTFS change journal and
-keeps an index in memory. This does the same with what Linux offers.
+keeps an index in memory. Trawlr does the same on Windows, and the same with what Linux offers on Linux.
 
 - **`trawlrd`** is a small system service. It holds every file and folder name in memory and
   watches each disk with a single filesystem-wide [fanotify](https://man7.org/linux/man-pages/man7/fanotify.7.html)
@@ -23,11 +23,28 @@ keeps an index in memory. This does the same with what Linux offers.
 - The index is saved at shutdown. At the next start it is loaded in a fraction of a second and
   checked against the disk in the background, so changes made while the service was not running
   are picked up too.
+- **On Windows**, `trawlrd` is a Windows service. It reads each NTFS drive's master file table
+  directly, which indexes a drive with a million files in about two seconds, and follows the
+  drive's change journal. After a restart it carries on from where the journal left off, so
+  nothing is rescanned.
 - **The window** (`trawlr-gui`) and **the `trawlr` command** are thin clients. They hold no index
   of their own and open instantly. `trawlr` on its own opens the window; `trawlr` followed by a
   search prints the matches in the terminal.
 
 ## Install
+
+### Windows
+
+Download `trawlr-…-windows-x64-setup.exe` from the [Releases](../../releases) page and run it.
+It installs the service (which starts indexing every local NTFS drive straight away), adds Trawlr
+to the Start menu and, if you leave the boxes ticked, starts Trawlr in the tray when you sign in
+and puts the `trawlr` command on PATH. Needs Windows 10 or 11 (x64) and an administrator to
+install. Administrators can search; see [Who can search](#who-can-search) to let others in.
+
+Global hotkeys are under **Tools → Options → Keyboard**; they work while Trawlr runs, from any
+program, including from the tray with no window open.
+
+### Linux
 
 Needs Linux 5.9 or newer and systemd. Packages for each release are on the
 [Releases](../../releases) page:
@@ -179,7 +196,8 @@ Matching is case-insensitive unless asked otherwise. Results are sorted by name 
 
 ## Configuration
 
-`/etc/trawlrd/config.toml` (see [`dist/config.toml`](dist/config.toml) for every option):
+`/etc/trawlrd/config.toml` on Linux (see [`dist/config.toml`](dist/config.toml) for every option),
+`C:\ProgramData\Trawlr\config.toml` on Windows (see [`dist/windows/config.toml`](dist/windows/config.toml)):
 
 ```toml
 roots = ["/"]                                   # what to index
@@ -189,7 +207,9 @@ allowed_users = ["sam"]                         # who may search
 allowed_groups = ["sudo", "wheel", "trawlr"]    # ... and members of these groups
 ```
 
-Apply changes with `sudo systemctl restart trawlrd`.
+Apply changes with `sudo systemctl restart trawlrd`, or on Windows, in an administrator Command
+Prompt, `sc stop trawlrd && sc start trawlrd`. On Windows `roots` names whole drives (`["C:", "D:"]`,
+default: every local NTFS drive) and paths are written with `\`.
 
 Local disk filesystems are indexed across mount points automatically, and drives are added and
 removed as they are mounted and unmounted. Virtual filesystems (`/proc`, tmpfs, overlay, snap
@@ -209,7 +229,12 @@ reads file contents.
   `sudo usermod -aG trawlr NAME`. The installer also adds the user who ran it to `allowed_users`.
   Anyone allowed in can see names in folders they could not otherwise list, so on a shared machine
   treat it like membership of an admin group.
-- The service is confined by systemd to exactly what it needs: two capabilities
+- On Windows the service runs as the system account, which reading a drive's file table needs.
+  Administrators (elevated or not) and members of a local `trawlr` group can search:
+  `net localgroup trawlr /add`, then `net localgroup trawlr NAME /add`. The service keeps its
+  index in `C:\ProgramData\Trawlr`, which it makes readable by administrators only, answers only
+  on the local machine, and drops every privilege it does not need.
+- On Linux the service is confined by systemd to exactly what it needs: two capabilities
   (`CAP_SYS_ADMIN` for fanotify, `CAP_DAC_READ_SEARCH` to list folders), no network, and a read-only
   view of the system apart from its own state directory. See [`dist/trawlrd.service`](dist/trawlrd.service).
 
@@ -263,6 +288,9 @@ trawlr --rescan                # compare the whole index with the disk now
 trawlr --rebuild               # throw the index away and start over
 ```
 
+On Windows: `sc query trawlrd` (is it running?), the log in `C:\ProgramData\Trawlr\trawlrd.log`
+(as administrator), and the same `trawlr --status`, `--rescan`, `--rebuild`.
+
 "this user is not allowed to search the system index": add the user to the `trawlr` group
 (`sudo usermod -aG trawlr NAME`, no restart needed), or to `allowed_users` in
 `/etc/trawlrd/config.toml` and restart the service.
@@ -283,15 +311,28 @@ tests/distros/run.sh           # in docker: build, install, test and package on 
                                # Fedora, openSUSE and Arch
 ```
 
+On Windows, with Rust, the Visual Studio build tools, Qt 6 for MSVC and Inno Setup 6 installed,
+from a developer prompt:
+
+```bat
+cargo test --release
+powershell -File dist\windows\build.ps1       &:: the programs and the installer, in dist\out
+powershell -File tests\windows\run.ps1        &:: as administrator: index C: and check live updates
+```
+
 Releases: push a tag such as `v0.1.0` and [`release.yml`](.github/workflows/release.yml) builds
 the packages ([`dist/package.sh`](dist/package.sh), [`dist/arch/PKGBUILD`](dist/arch/PKGBUILD))
-for x86_64 and arm64 and attaches them to a draft release.
+for x86_64 and arm64, and the Windows installer ([`dist/windows`](dist/windows)), and attaches
+them to a draft release.
 
 The layout: [`src/index.rs`](src/index.rs) is the in-memory index, [`src/query.rs`](src/query.rs)
 the search language and matcher, [`src/scan.rs`](src/scan.rs) reads directories,
 [`src/watch.rs`](src/watch.rs) wraps fanotify, [`src/indexer.rs`](src/indexer.rs) is the single
 writer that ties them together, [`src/server.rs`](src/server.rs) the socket protocol, and
-[`gui/`](gui) the Qt client.
+[`gui/`](gui) the Qt client. On Windows, [`src/win/`](src/win) replaces the Linux disk reading and
+watching: [`ntfs.rs`](src/win/ntfs.rs) reads the MFT, [`usn.rs`](src/win/usn.rs) the change
+journal, [`indexer.rs`](src/win/indexer.rs) applies them, and [`pipe.rs`](src/win/pipe.rs) and
+[`service.rs`](src/win/service.rs) are the named pipe and the service.
 
 ## License
 

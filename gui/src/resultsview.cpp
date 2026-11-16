@@ -343,8 +343,8 @@ void ResultsView::drawCellText(QPainter &p, const QRect &rect, const QString &te
 
 QString ResultsView::displayDir(const QString &dir) const
 {
-    // Your own home folder as ~, the way a shell shows it.
-    if (!m_home.isEmpty() && m_home != QLatin1String("/") && dir.startsWith(m_home)
+    // Your own home folder as ~, the way a shell shows it (not a Windows habit).
+    if (QDir::separator() == QLatin1Char('/') && !m_home.isEmpty() && m_home != QLatin1String("/") && dir.startsWith(m_home)
         && (dir.size() == m_home.size() || dir.at(m_home.size()) == QLatin1Char('/')))
         return QLatin1Char('~') + dir.mid(m_home.size());
     return dir;

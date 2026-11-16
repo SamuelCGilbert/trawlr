@@ -65,8 +65,26 @@ jobs:
           name: pkg-arch
           path: dist/out/*
 
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt and Inno Setup
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File dist\windows\ci-setup.ps1 -Inno
+      - name: Build the installer
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS=%%i"
+          call "%VS%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          powershell -NoProfile -ExecutionPolicy Bypass -File dist\windows\build.ps1 || exit /b 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-windows
+          path: dist/out/*.exe
+
   release:
-    needs: [package, arch]
+    needs: [package, arch, windows]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     timeout-minutes: 30

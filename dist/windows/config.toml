@@ -1,0 +1,27 @@
+# Trawlr's service configuration (Windows).
+# Changes take effect when the service restarts. In an administrator
+# Command Prompt:  sc stop trawlrd && sc start trawlrd
+
+# Drives to index. Default: every local NTFS drive.
+#roots = ["C:", "D:"]
+
+# Folders or files to leave out, with everything beneath them.
+#exclude = ['C:\Windows\WinSxS', 'D:\Backups']
+
+# Names to leave out wherever they appear; * and ? are wildcards.
+#exclude_names = ["node_modules", "*.tmp"]
+
+# Who may search. The index lists every file name on this computer, other
+# users' files included, so only the users and groups named here can search
+# it. "Administrators" covers administrators whether or not they are running
+# elevated. To let a standard user search, add them to a local group named
+# trawlr (as administrator):
+#   net localgroup trawlr /add
+#   net localgroup trawlr NAME /add
+# Groups that do not exist are ignored. "*" in allowed_users allows everyone.
+allowed_users = []
+allowed_groups = ["Administrators", "trawlr"]
+
+# How often the index is saved while it has unsaved changes. It is also
+# saved when the service stops.
+#save_interval_minutes = 360

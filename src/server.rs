@@ -1,4 +1,5 @@
-//! The Unix-socket protocol clients search through.
+//! The protocol clients search through, over a Unix socket (or, on Windows,
+//! a named pipe).
 //!
 //! One JSON object per line in each direction. A client sends `query` and
 //! gets the total number of matches plus the first rows; the full result set
@@ -7,12 +8,17 @@
 //! daemon pushes `{"event":"changed"}` once and the client re-runs the query.
 
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+#[cfg(unix)]
+use std::time::Duration;
+use std::time::Instant;
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -20,9 +26,10 @@ use serde_json::json;
 
 use crate::index::{Index, Touched, F_DIR, F_SYMLINK, NONE};
 use crate::indexer::{Msg, Shared};
-use crate::mounts::WatchMode;
 use crate::query::{self, Compiled, QueryOpts, Sort};
+use crate::index::SEP;
 use crate::util::lossy;
+#[cfg(unix)]
 use crate::{info, warn};
 
 pub const PROTOCOL: u32 = 1;
@@ -32,7 +39,7 @@ pub struct SessionShared {
     /// Set once the client has been told its results are out of date, and
     /// cleared by its next query, so a busy disk sends one nudge, not a flood.
     notified: AtomicBool,
-    out: Mutex<UnixStream>,
+    out: Mutex<Box<dyn Write + Send>>,
 }
 
 impl SessionShared {
@@ -130,10 +137,20 @@ fn rows(idx: &Index, ids: &[u32]) -> Vec<Row> {
         }
         let name = idx.orig_name(id);
         let f = idx.flags(id);
-        let shown: &[u8] = if parent_path.is_empty() && p != NONE { b"/" } else { &parent_path };
+        // The folder a top-level entry is in is shown as `/`, or as `C:\\`.
+        let mut drive = Vec::new();
+        let shown: &[u8] = if parent_path.is_empty() && p != NONE {
+            b"/"
+        } else if cfg!(windows) && parent_path.ends_with(b":") {
+            drive.extend_from_slice(&parent_path);
+            drive.push(SEP);
+            &drive
+        } else {
+            &parent_path
+        };
         let raw = if std::str::from_utf8(name).is_err() || std::str::from_utf8(&parent_path).is_err() {
             let mut full = parent_path.clone();
-            full.push(b'/');
+            full.push(SEP);
             full.extend_from_slice(name);
             Some(full.iter().map(|b| format!("{b:02x}")).collect())
         } else {
@@ -151,21 +168,9 @@ fn window(ids: &[u32], offset: u64, limit: u64) -> &[u32] {
 }
 
 pub fn status(sh: &Shared) -> serde_json::Value {
-    let idx = sh.index.read();
-    let fs = sh.fs.snapshot();
-    let filesystems: Vec<_> = fs
-        .iter()
-        .filter(|f| !f.retired)
-        .map(|f| {
-            json!({
-                "mount": lossy(if f.mount_point.is_empty() { b"/" } else { &f.mount_point }),
-                "type": f.fstype,
-                "watch": match f.watch { WatchMode::Filesystem => "filesystem", WatchMode::PerDir => "per-folder", WatchMode::Off => "off" },
-            })
-        })
-        .collect();
-    let (marks, failed) = sh.watcher.as_ref().map(|w| (w.dir_marks.load(Ordering::Relaxed), w.mark_failures.load(Ordering::Relaxed))).unwrap_or((0, 0));
-    json!({
+    let mut v = {
+        let idx = sh.index.read();
+        json!({
         "ok": true,
         "protocol": PROTOCOL,
         "version": env!("CARGO_PKG_VERSION"),
@@ -174,16 +179,31 @@ pub fn status(sh: &Shared) -> serde_json::Value {
         "files": idx.live_count() - idx.dir_count(),
         "folders": idx.dir_count(),
         "memory_mb": idx.mem_bytes() >> 20,
-        "roots": sh.settings.roots.iter().map(|r| lossy(if r.is_empty() { b"/" } else { r })).collect::<Vec<_>>(),
-        "filesystems": filesystems,
-        "scanned": sh.scan.dirs_seen.load(Ordering::Relaxed) + sh.scan.files_seen.load(Ordering::Relaxed),
         "events": sh.events.load(Ordering::Relaxed),
-        "folder_watches": marks,
-        "unwatched_folders": failed,
         "uptime_secs": sh.started.elapsed().as_secs(),
-    })
+        })
+    };
+    // What is indexed and how it is watched differs per system.
+    if let Some(map) = v.as_object_mut() {
+        crate::indexer::status_details(sh, map);
+    }
+    v
 }
 
+/// Whether a client may search, known when it connects (Unix) or only once
+/// it has sent something (a Windows pipe client can only be identified then).
+pub enum Access {
+    Known(bool),
+    AfterFirstRequest(Box<dyn FnOnce() -> bool + Send>),
+}
+
+const DENIED: &str = if cfg!(windows) {
+    "this user is not allowed to search the index (see allowed_users and allowed_groups in C:\\ProgramData\\Trawlr\\config.toml)"
+} else {
+    "this user is not allowed to search the system index (see allowed_users and allowed_groups in /etc/trawlrd/config.toml)"
+};
+
+#[cfg(unix)]
 fn peer_uid(stream: &UnixStream) -> Option<u32> {
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -191,6 +211,7 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
     (r == 0).then_some(cred.uid)
 }
 
+#[cfg(unix)]
 fn handle(sh: Arc<Shared>, stream: UnixStream) {
     let uid = peer_uid(&stream);
     let me = unsafe { libc::geteuid() };
@@ -200,18 +221,29 @@ fn handle(sh: Arc<Shared>, stream: UnixStream) {
     };
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
     let Ok(read_half) = stream.try_clone() else { return };
-    let session = Arc::new(SessionShared { query: Mutex::new(None), notified: AtomicBool::new(false), out: Mutex::new(stream) });
-    if !allowed {
-        session.send(&json!({"ok": false, "error": "this user is not allowed to search the system index (see allowed_users and allowed_groups in /etc/trawlrd/config.toml)"}));
-        return;
-    }
-    sh.sessions.lock().push(session.clone());
+    session(sh, read_half, Box::new(stream), Access::Known(allowed));
+}
+
+/// Serve one client until it disconnects.
+pub fn session(sh: Arc<Shared>, input: impl Read, output: Box<dyn Write + Send>, access: Access) {
+    let session = Arc::new(SessionShared { query: Mutex::new(None), notified: AtomicBool::new(false), out: Mutex::new(output) });
+    let mut late_check = match access {
+        Access::Known(false) => {
+            session.send(&json!({"ok": false, "error": DENIED}));
+            return;
+        }
+        Access::Known(true) => None,
+        Access::AfterFirstRequest(f) => Some(f),
+    };
 
     let mut results: Vec<u32> = Vec::new();
     let mut epoch = 0u64;
     let mut qid = 0u64;
-    let mut reader = BufReader::new(read_half);
+    let mut reader = BufReader::new(input);
     let mut line = Vec::new();
+    if late_check.is_none() {
+        sh.sessions.lock().push(session.clone());
+    }
     loop {
         line.clear();
         match (&mut reader).take(1 << 20).read_until(b'\n', &mut line) {
@@ -220,6 +252,13 @@ fn handle(sh: Arc<Shared>, stream: UnixStream) {
         }
         if !line.ends_with(b"\n") {
             break;
+        }
+        if let Some(check) = late_check.take() {
+            if !check() {
+                session.send(&json!({"ok": false, "error": DENIED}));
+                return;
+            }
+            sh.sessions.lock().push(session.clone());
         }
         let req: Request = match serde_json::from_slice(&line) {
             Ok(r) => r,
@@ -286,6 +325,7 @@ fn handle(sh: Arc<Shared>, stream: UnixStream) {
     sh.sessions.lock().retain(|s| !Arc::ptr_eq(s, &session));
 }
 
+#[cfg(unix)]
 pub fn bind(sh: &Shared) -> std::io::Result<UnixListener> {
     let path = &sh.settings.socket;
     if let Some(dir) = path.parent() {
@@ -308,6 +348,7 @@ pub fn bind(sh: &Shared) -> std::io::Result<UnixListener> {
     Ok(listener)
 }
 
+#[cfg(unix)]
 pub fn serve(sh: Arc<Shared>, listener: UnixListener) {
     for conn in listener.incoming() {
         match conn {

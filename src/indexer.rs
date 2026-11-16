@@ -69,6 +69,31 @@ impl Shared {
     }
 }
 
+/// The Linux part of the `status` reply: filesystems and how each is watched.
+pub fn status_details(sh: &Shared, v: &mut serde_json::Map<String, serde_json::Value>) {
+    use crate::mounts::WatchMode;
+    use serde_json::json;
+    let filesystems: Vec<_> = sh
+        .fs
+        .snapshot()
+        .iter()
+        .filter(|f| !f.retired)
+        .map(|f| {
+            json!({
+                "mount": lossy(if f.mount_point.is_empty() { b"/" } else { &f.mount_point }),
+                "type": f.fstype,
+                "watch": match f.watch { WatchMode::Filesystem => "filesystem", WatchMode::PerDir => "per-folder", WatchMode::Off => "off" },
+            })
+        })
+        .collect();
+    let (marks, failed) = sh.watcher.as_ref().map(|w| (w.dir_marks.load(Ordering::Relaxed), w.mark_failures.load(Ordering::Relaxed))).unwrap_or((0, 0));
+    v.insert("roots".into(), json!(sh.settings.roots.iter().map(|r| lossy(if r.is_empty() { b"/" } else { r })).collect::<Vec<_>>()));
+    v.insert("filesystems".into(), json!(filesystems));
+    v.insert("scanned".into(), json!(sh.scan.dirs_seen.load(Ordering::Relaxed) + sh.scan.files_seen.load(Ordering::Relaxed)));
+    v.insert("folder_watches".into(), json!(marks));
+    v.insert("unwatched_folders".into(), json!(failed));
+}
+
 /// An open directory an event batch is syncing entries of. Once opened and
 /// checked against the indexed handle, the descriptor keeps referring to that
 /// directory even if it is renamed meanwhile.

@@ -5,22 +5,41 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+#[cfg(unix)]
 pub const SYSTEM_SOCKET: &str = "/run/trawlrd/trawlrd.sock";
+#[cfg(unix)]
 pub const SYSTEM_DB: &str = "/var/lib/trawlrd/index.db";
+#[cfg(unix)]
 pub const SYSTEM_CONFIG: &str = "/etc/trawlrd/config.toml";
+
+/// The service's named pipe. Clients reach it as `\\.\pipe\trawlrd`.
+#[cfg(windows)]
+pub const SYSTEM_SOCKET: &str = r"\\.\pipe\trawlrd";
+
+/// `C:\ProgramData\Trawlr`, where the service keeps its configuration,
+/// index and log.
+#[cfg(windows)]
+pub fn data_dir() -> PathBuf {
+    std::env::var_os("ProgramData").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\ProgramData")).join("Trawlr")
+}
 
 /// Local, on-disk filesystems indexed without being asked. Virtual ones
 /// (proc, sysfs, tmpfs, overlay, squashfs) and network mounts are left out
 /// unless named in `extra_fs_types` or listed as a root.
+#[cfg(unix)]
 const DEFAULT_FS_TYPES: &[&str] = &[
     "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "zfs", "bcachefs", "jfs", "reiserfs", "nilfs2", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk",
     "hfsplus", "udf",
 ];
+/// Windows indexes NTFS volumes by reading their master file table.
+#[cfg(windows)]
+const DEFAULT_FS_TYPES: &[&str] = &["NTFS"];
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    /// Directories to index. Default: `/` as a system service, `$HOME` otherwise.
+    /// Directories to index. Default: `/` as a system service, `$HOME`
+    /// otherwise. On Windows, drives (`"C:"`); default: every local NTFS drive.
     pub roots: Vec<String>,
     /// Absolute directories or files to leave out, with everything beneath them.
     pub exclude: Vec<String>,
@@ -52,8 +71,13 @@ pub struct Settings {
     pub system: bool,
     pub watch: bool,
     pub allow_all: bool,
+    #[cfg(unix)]
     pub allowed_uids: HashSet<u32>,
+    #[cfg(unix)]
     pub allowed_gids: Vec<u32>,
+    /// Security identifiers of the users and groups allowed to search.
+    #[cfg(windows)]
+    pub allowed_sids: Vec<Vec<u8>>,
     exclude_paths: HashSet<Vec<u8>>,
     exclude_names: Vec<Vec<u8>>,
     fs_types: HashSet<String>,
@@ -70,7 +94,11 @@ pub struct Overrides {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    #[cfg(windows)]
+    let var = "USERPROFILE";
+    #[cfg(unix)]
+    let var = "HOME";
+    std::env::var_os(var).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
 fn expand(p: &str) -> PathBuf {
@@ -83,16 +111,30 @@ fn expand(p: &str) -> PathBuf {
     }
 }
 
+#[cfg(unix)]
 fn bytes_of(p: &Path) -> Vec<u8> {
     use std::os::unix::ffi::OsStrExt;
     let b = p.as_os_str().as_bytes();
     if b.len() > 1 && b.ends_with(b"/") { b[..b.len() - 1].to_vec() } else { b.to_vec() }
 }
 
+/// A Windows path as the index spells it: `C:\Users\x`, no trailing `\`,
+/// no `\\?\` prefix, either slash accepted, folded to lower case because
+/// Windows compares names without case.
+#[cfg(windows)]
+fn bytes_of(p: &Path) -> Vec<u8> {
+    let s = p.to_string_lossy().replace('/', "\\");
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    let s = s.trim_end_matches('\\');
+    crate::util::to_lower(s.as_bytes())
+}
+
+#[cfg(unix)]
 pub fn user_runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("/tmp/trawlrd-{}", unsafe { libc::getuid() })))
 }
 
+#[cfg(unix)]
 pub fn user_socket() -> PathBuf {
     user_runtime_dir().join("trawlrd/trawlrd.sock")
 }
@@ -103,10 +145,57 @@ pub fn client_socket() -> PathBuf {
     if let Some(p) = std::env::var_os("TRAWLRD_SOCKET") {
         return PathBuf::from(p);
     }
-    let sys = PathBuf::from(SYSTEM_SOCKET);
-    if sys.exists() { sys } else { user_socket() }
+    #[cfg(windows)]
+    return PathBuf::from(SYSTEM_SOCKET);
+    #[cfg(unix)]
+    {
+        let sys = PathBuf::from(SYSTEM_SOCKET);
+        if sys.exists() { sys } else { user_socket() }
+    }
 }
 
+#[cfg(unix)]
+fn unix_roots(root_strs: &[String]) -> Result<Vec<Vec<u8>>, String> {
+    let mut roots: Vec<Vec<u8>> = Vec::new();
+    for r in root_strs {
+        let p = expand(r);
+        let p = std::fs::canonicalize(&p).map_err(|e| format!("root {}: {e}", p.display()))?;
+        roots.push(bytes_of(&p));
+    }
+    // A root inside another root is already covered by it.
+    roots.sort();
+    roots.dedup();
+    let all = roots.clone();
+    roots.retain(|r| !all.iter().any(|o| o != r && (o.as_slice() == b"/" || (r.starts_with(o) && r.get(o.len()) == Some(&b'/')))));
+    // Inside the index the root `/` is the empty path, so that every
+    // child path is simply `parent + "/" + name`.
+    for r in roots.iter_mut() {
+        if r.as_slice() == b"/" {
+            r.clear();
+        }
+    }
+    Ok(roots)
+}
+
+/// Windows indexes whole drives: `"C:"`, `"d:\\"` and `"D:/"` all name
+/// drive `D:`. An empty list means every local NTFS drive.
+#[cfg(windows)]
+fn windows_roots(root_strs: &[String]) -> Result<Vec<Vec<u8>>, String> {
+    let mut roots = Vec::new();
+    for r in root_strs {
+        let t = r.trim_end_matches(['\\', '/']);
+        let b = t.as_bytes();
+        if b.len() != 2 || !b[0].is_ascii_alphabetic() || b[1] != b':' {
+            return Err(format!("root {r:?}: on Windows a root is a whole drive, such as \"C:\" (use exclude to leave folders out)"));
+        }
+        roots.push(vec![b[0].to_ascii_uppercase(), b':']);
+    }
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
+}
+
+#[cfg(unix)]
 fn gid_of(group: &str) -> Option<u32> {
     if let Ok(n) = group.parse::<u32>() {
         return Some(n);
@@ -118,6 +207,7 @@ fn gid_of(group: &str) -> Option<u32> {
 
 /// Every group a user belongs to, read from the system's user database now,
 /// so a user added to a group can search without anyone restarting trawlrd.
+#[cfg(unix)]
 fn groups_of(uid: u32) -> Vec<u32> {
     let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
     let mut found: *mut libc::passwd = std::ptr::null_mut();
@@ -145,6 +235,7 @@ fn groups_of(uid: u32) -> Vec<u32> {
     }
 }
 
+#[cfg(unix)]
 fn uid_of(user: &str) -> Option<u32> {
     if let Ok(n) = user.parse::<u32>() {
         return Some(n);
@@ -156,9 +247,17 @@ fn uid_of(user: &str) -> Option<u32> {
 
 impl Settings {
     pub fn load(ov: Overrides) -> Result<Settings, String> {
+        #[cfg(unix)]
         let system = unsafe { libc::geteuid() } == 0 && !ov.user_mode;
+        // Reading a volume's file table needs administrator rights, so the
+        // Windows daemon only exists as the machine-wide service.
+        #[cfg(windows)]
+        let system = true;
         let cfg_path = ov.config.clone().unwrap_or_else(|| {
             if system {
+                #[cfg(windows)]
+                return data_dir().join("config.toml");
+                #[cfg(unix)]
                 PathBuf::from(SYSTEM_CONFIG)
             } else {
                 std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("trawlrd/config.toml")
@@ -174,34 +273,30 @@ impl Settings {
             ov.roots.clone()
         } else if !cfg.roots.is_empty() {
             cfg.roots.clone()
+        } else if cfg!(windows) {
+            // Every local NTFS drive, found when indexing starts.
+            Vec::new()
         } else if system {
             vec!["/".into()]
         } else {
             vec![home().to_string_lossy().into_owned()]
         };
-        let mut roots: Vec<Vec<u8>> = Vec::new();
-        for r in &root_strs {
-            let p = expand(r);
-            let p = std::fs::canonicalize(&p).map_err(|e| format!("root {}: {e}", p.display()))?;
-            roots.push(bytes_of(&p));
-        }
-        // A root inside another root is already covered by it.
-        roots.sort();
-        roots.dedup();
-        let all = roots.clone();
-        roots.retain(|r| {
-            !all.iter().any(|o| o != r && (o.as_slice() == b"/" || (r.starts_with(o) && r.get(o.len()) == Some(&b'/'))))
-        });
-        // Inside the index the root `/` is the empty path, so that every
-        // child path is simply `parent + "/" + name`.
-        for r in roots.iter_mut() {
-            if r.as_slice() == b"/" {
-                r.clear();
-            }
-        }
+        #[cfg(windows)]
+        let roots = windows_roots(&root_strs)?;
+        #[cfg(unix)]
+        let roots = unix_roots(&root_strs)?;
 
-        let socket = ov.socket.clone().unwrap_or_else(|| if system { PathBuf::from(SYSTEM_SOCKET) } else { user_socket() });
+        let socket = ov.socket.clone().unwrap_or_else(|| {
+            #[cfg(unix)]
+            if !system {
+                return user_socket();
+            }
+            PathBuf::from(SYSTEM_SOCKET)
+        });
         let db = ov.db.clone().unwrap_or_else(|| {
+            #[cfg(windows)]
+            return data_dir().join("index.db");
+            #[cfg(unix)]
             if system {
                 PathBuf::from(SYSTEM_DB)
             } else {
@@ -209,33 +304,57 @@ impl Settings {
             }
         });
 
+        let allow_all = cfg.allowed_users.iter().any(|u| u == "*");
+        #[cfg(unix)]
         let mut allowed_uids = HashSet::new();
-        let mut allow_all = false;
-        for u in &cfg.allowed_users {
-            if u == "*" {
-                allow_all = true;
-            } else if let Some(uid) = uid_of(u) {
+        #[cfg(unix)]
+        for u in cfg.allowed_users.iter().filter(|u| *u != "*") {
+            if let Some(uid) = uid_of(u) {
                 allowed_uids.insert(uid);
             } else {
                 crate::warn!("allowed_users: unknown user {u:?}");
             }
         }
-
+        #[cfg(unix)]
         let allowed_gids = cfg.allowed_groups.iter().filter_map(|g| gid_of(g)).collect();
+        #[cfg(windows)]
+        let allowed_sids = crate::win::security::resolve_accounts(cfg.allowed_users.iter().filter(|u| *u != "*"), cfg.allowed_groups.iter());
 
         let mut exclude_paths: HashSet<Vec<u8>> = cfg.exclude.iter().map(|e| bytes_of(&expand(e))).collect();
         // Never index our own database: every save would be a change to index.
         exclude_paths.insert(bytes_of(&db));
         exclude_paths.insert(bytes_of(&db.with_extension("db.tmp")));
         exclude_paths.insert(bytes_of(&db.with_extension("db.running")));
-        let exclude_names = cfg.exclude_names.iter().map(|n| n.as_bytes().to_vec()).collect();
+        // Our own log changes with every line written to it.
+        #[cfg(windows)]
+        exclude_paths.insert(bytes_of(&data_dir().join("trawlrd.log")));
+        // Windows names compare without case.
+        let exclude_names = cfg.exclude_names.iter().map(|n| if cfg!(windows) { crate::util::to_lower(n.as_bytes()) } else { n.as_bytes().to_vec() }).collect();
         let mut fs_types: HashSet<String> = DEFAULT_FS_TYPES.iter().map(|s| s.to_string()).collect();
         fs_types.extend(cfg.extra_fs_types.iter().cloned());
 
-        Ok(Settings { cfg, roots, socket, db, system, watch: !ov.no_watch, allow_all, allowed_uids, allowed_gids, exclude_paths, exclude_names, fs_types })
+        Ok(Settings {
+            cfg,
+            roots,
+            socket,
+            db,
+            system,
+            watch: !ov.no_watch,
+            allow_all,
+            #[cfg(unix)]
+            allowed_uids,
+            #[cfg(unix)]
+            allowed_gids,
+            #[cfg(windows)]
+            allowed_sids,
+            exclude_paths,
+            exclude_names,
+            fs_types,
+        })
     }
 
     /// Whether a user (other than the daemon's own) may search this index.
+    #[cfg(unix)]
     pub fn may_search(&self, uid: u32) -> bool {
         if uid == 0 || self.allow_all || self.allowed_uids.contains(&uid) {
             return true;
@@ -243,6 +362,26 @@ impl Settings {
         !self.allowed_gids.is_empty() && groups_of(uid).iter().any(|g| self.allowed_gids.contains(g))
     }
 
+    /// Whether a client with this user and these groups (security
+    /// identifiers, binary) may search the index.
+    #[cfg(windows)]
+    pub fn may_search_sids(&self, user: &[u8], groups: &[Vec<u8>]) -> bool {
+        self.allow_all || crate::win::security::is_system(user) || self.allowed_sids.iter().any(|a| a == user || groups.contains(a))
+    }
+
+    /// Whether a name is left out wherever it appears (`exclude_names`).
+    /// On Windows `name` must be folded to lower case.
+    pub fn is_excluded_name(&self, name: &[u8]) -> bool {
+        self.exclude_names.iter().any(|p| wild_match(p, name))
+    }
+
+    /// The folders that hold an excluded path, so a scan only builds the
+    /// full path of an entry to check it when it is in one of them.
+    pub fn exclude_parents(&self) -> HashSet<Vec<u8>> {
+        self.exclude_paths.iter().filter_map(|p| p.iter().rposition(|&b| b == crate::index::SEP).map(|i| p[..i].to_vec())).collect()
+    }
+
+    /// On Windows `path` and `name` must already be folded to lower case.
     pub fn is_excluded(&self, path: &[u8], name: &[u8]) -> bool {
         self.exclude_names.iter().any(|p| wild_match(p, name))
             || (!self.exclude_paths.is_empty() && self.exclude_paths.contains(path))

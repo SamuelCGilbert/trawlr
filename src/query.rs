@@ -21,7 +21,7 @@ use memchr::memmem::Finder;
 use rayon::prelude::*;
 use regex::bytes::{Regex, RegexBuilder};
 
-use crate::index::{Index, F_DEAD, F_ROOT, NONE};
+use crate::index::{Index, F_DEAD, F_ROOT, NONE, SEP};
 use crate::util::to_lower;
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -110,8 +110,8 @@ struct PathLit {
 
 impl PathLit {
     fn new(slot: usize, text: &[u8], exact: bool) -> PathLit {
-        let comps: Vec<Vec<u8>> = text.split(|&b| b == b'/').map(|c| c.to_vec()).collect();
-        let joined = (1..=comps.len()).map(|j| comps[..j].join(&b'/')).collect();
+        let comps: Vec<Vec<u8>> = text.split(|&b| b == SEP).map(|c| c.to_vec()).collect();
+        let joined = (1..=comps.len()).map(|j| comps[..j].join(&SEP)).collect();
         PathLit { slot, exact, comps, joined, full: Finder::new(text).into_owned() }
     }
 
@@ -530,7 +530,15 @@ impl Parser<'_> {
 
     fn text_leaf(&mut self, t: &str, c: TermCtx) -> Result<Leaf, String> {
         let wild = t.contains(['*', '?']);
-        let path_mode = c.path || (!c.regex && t.contains('/'));
+        let path_mode = c.path || (!c.regex && (t.contains('/') || (cfg!(windows) && t.contains('\\'))));
+        // Windows paths are written with either slash.
+        let slashed;
+        let t = if cfg!(windows) && path_mode && !c.regex {
+            slashed = t.replace('/', "\\");
+            slashed.as_str()
+        } else {
+            t
+        };
         if c.regex || (wild && path_mode) {
             let pat = if c.regex { t.to_string() } else { wildcard_regex(t) };
             let re = build_regex(&pat, !c.case)?;
@@ -630,12 +638,27 @@ fn parse_size(s: &str) -> Result<(u64, u64), String> {
     Ok((v, v.saturating_add(unit - 1)))
 }
 
-fn local_tm(t: i64) -> libc::tm {
+pub fn local_tm(t: i64) -> libc::tm {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     let tt = t as libc::time_t;
-    unsafe { libc::localtime_r(&tt, &mut tm) };
+    #[cfg(unix)]
+    unsafe {
+        libc::localtime_r(&tt, &mut tm)
+    };
+    #[cfg(windows)]
+    unsafe {
+        libc::localtime_s(&mut tm, &tt)
+    };
     tm
 }
+
+#[cfg(windows)]
+extern "C" {
+    #[link_name = "_mktime64"]
+    fn mktime(tm: *mut libc::tm) -> i64;
+}
+#[cfg(unix)]
+use libc::mktime;
 
 /// Local midnight of a calendar date; out-of-range months and days roll over.
 fn mk(year: i32, mon0: i32, day: i32) -> i64 {
@@ -644,7 +667,7 @@ fn mk(year: i32, mon0: i32, day: i32) -> i64 {
     tm.tm_mon = mon0;
     tm.tm_mday = day;
     tm.tm_isdst = -1;
-    unsafe { libc::mktime(&mut tm) as i64 }
+    unsafe { mktime(&mut tm) as i64 }
 }
 
 /// A date expression as a half-open interval of seconds.
@@ -986,7 +1009,9 @@ mod tests {
         let opts = QueryOpts { path: true, ..Default::default() };
         assert_eq!(run_opts(&idx, "downloads song", opts, Sort::Name), ["song.mp3"]);
         assert_eq!(run(&idx, "*/project/*.rs"), ["main.rs"]);
-        assert_eq!(run(&idx, "regex:path:^/home/sal/[^/]+\\.txt$"), ["invoice_draft.txt", "notes.txt"]);
+        // A regular expression sees the path as the system writes it.
+        let re = if cfg!(windows) { r"regex:path:^\\home\\sal\\[^\\]+\.txt$" } else { r"regex:path:^/home/sal/[^/]+\.txt$" };
+        assert_eq!(run(&idx, re), ["invoice_draft.txt", "notes.txt"]);
     }
 
     #[test]

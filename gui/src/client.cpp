@@ -1,22 +1,7 @@
 #include "client.h"
 
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
-
-static QString defaultSocket()
-{
-    const QByteArray env = qgetenv("TRAWLRD_SOCKET");
-    if (!env.isEmpty())
-        return QString::fromLocal8Bit(env);
-    const QString system = QStringLiteral("/run/trawlrd/trawlrd.sock");
-    if (QFileInfo::exists(system))
-        return system;
-    const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
-    if (!runtime.isEmpty())
-        return QString::fromLocal8Bit(runtime) + QStringLiteral("/trawlrd/trawlrd.sock");
-    return system;
-}
 
 Client::Client(QObject *parent) : QObject(parent)
 {
@@ -58,7 +43,7 @@ void Client::tryConnect()
         return;
     // Looked up on every attempt: the service may be installed, or started
     // for the first time, while this window is already open.
-    m_path = defaultSocket();
+    m_path = Platform::daemonSocket();
     m_socket.connectToServer(m_path);
 }
 

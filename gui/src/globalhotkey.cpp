@@ -238,3 +238,6 @@ void GlobalHotkey::migrate()
     }
     settings.setValue(QStringLiteral("hotkeys/adoptedOldNames"), true);
 }
+
+// KDE runs the launcher for a key; nothing here hears it.
+void GlobalHotkey::setHandler(std::function<void(Action)>) {}

@@ -28,3 +28,22 @@ jobs:
           QT_QPA_PLATFORM=offscreen ./tst_gui
       - name: Stress test
         run: python3 tests/stress.py --rounds 10
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File dist\windows\ci-setup.ps1
+      - name: Build
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS=%%i"
+          call "%VS%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          powershell -NoProfile -ExecutionPolicy Bypass -File dist\windows\build.ps1 -NoInstaller || exit /b 1
+      - name: Daemon tests
+        run: cargo test --release --locked
+      # Indexes the runner's C: drive and checks live updates against it.
+      - name: Live index test
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\windows\run.ps1

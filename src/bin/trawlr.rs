@@ -3,9 +3,16 @@
 //! which is a program of its own, `trawlr-gui`.
 
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
+
+/// A Windows named pipe opens like a file. Reads and writes take turns here,
+/// so one handle, cloned, serves both directions.
+#[cfg(windows)]
+type UnixStream = std::fs::File;
 
 use trawlr::config::client_socket;
 use serde_json::{json, Value};
@@ -54,7 +61,14 @@ struct Client {
 impl Client {
     fn connect() -> Result<Client, String> {
         let path = client_socket();
+        #[cfg(unix)]
         let s = UnixStream::connect(&path).map_err(|e| format!("cannot reach trawlrd at {}: {e}\nIs the service running?  systemctl status trawlrd", path.display()))?;
+        #[cfg(windows)]
+        let s = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| format!("cannot reach trawlrd at {}: {e}\nIs the Trawlr service running?  sc query trawlrd", path.display()))?;
         Ok(Client { reader: BufReader::new(s.try_clone().map_err(|e| e.to_string())?), writer: s })
     }
 
@@ -96,9 +110,7 @@ fn human(n: u64) -> String {
 }
 
 fn local_time(t: i64) -> String {
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    let tt = t as libc::time_t;
-    unsafe { libc::localtime_r(&tt, &mut tm) };
+    let tm = trawlr::query::local_tm(t);
     format!("{:04}-{:02}-{:02} {:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min)
 }
 
@@ -110,23 +122,31 @@ fn window_program() -> Option<PathBuf> {
         return Some(p.into());
     }
     // Installed side by side; else wherever PATH finds it.
+    let name = format!("trawlr-gui{}", std::env::consts::EXE_SUFFIX);
     if let Ok(exe) = std::env::current_exe() {
-        let p = exe.with_file_name("trawlr-gui");
+        let p = exe.with_file_name(&name);
         if p.is_file() {
             return Some(p);
         }
     }
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join("trawlr-gui")).find(|p| p.is_file())
+    std::env::split_paths(&path).map(|d| d.join(&name)).find(|p| p.is_file())
 }
 
 /// Replace this process with the window, so the desktop's activation token
-/// and launch feedback go straight to it.
+/// and launch feedback go straight to it. Windows cannot replace a process,
+/// so there the window is started and left running.
 fn open_window(args: Vec<String>) -> Result<i32, String> {
     let Some(gui) = window_program() else {
         return Err("the search window (trawlr-gui) is not installed; search from here with: trawlr <search terms>".into());
     };
+    #[cfg(unix)]
     let err = std::process::Command::new(&gui).args(args).exec();
+    #[cfg(windows)]
+    let err = match std::process::Command::new(&gui).args(args).spawn() {
+        Ok(_) => return Ok(0),
+        Err(e) => e,
+    };
     Err(format!("cannot start {}: {err}", gui.display()))
 }
 
@@ -250,7 +270,8 @@ fn run() -> Result<i32, String> {
                 Some(hex) => unhex(hex),
                 None => {
                     let (p, n) = (r["p"].as_str().unwrap_or(""), r["n"].as_str().unwrap_or(""));
-                    format!("{}/{n}", if p == "/" { "" } else { p }).into_bytes()
+                    let sep = trawlr::index::SEP as char;
+                    format!("{}{sep}{n}", if p == "/" { "" } else { p.trim_end_matches(sep) }).into_bytes()
                 }
             };
             if long {

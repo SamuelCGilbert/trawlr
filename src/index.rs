@@ -24,6 +24,9 @@ use crate::util::{hash_bytes, lower_into};
 
 pub const NONE: u32 = u32::MAX;
 
+/// What joins the parts of a path: `/`, or `\` on Windows.
+pub const SEP: u8 = if cfg!(windows) { b'\\' } else { b'/' };
+
 pub const F_DIR: u8 = 1;
 pub const F_SYMLINK: u8 = 2;
 pub const F_DEAD: u8 = 4;
@@ -262,8 +265,27 @@ impl Index {
         None
     }
 
+    /// The child whose name equals `lower` ignoring case, as Windows looks
+    /// names up. Prefers an exact match when names differ only in case.
+    pub fn child_by_name_nocase(&self, dir: u32, name: &[u8], lower: &[u8]) -> Option<u32> {
+        let ch = &self.dirs[self.dir_slot(dir)].children;
+        let start = ch.partition_point(|&c| self.lower_name(c) < lower);
+        let mut first = None;
+        for &c in &ch[start..] {
+            if self.lower_name(c) != lower {
+                break;
+            }
+            if self.orig_name(c) == name {
+                return Some(c);
+            }
+            first.get_or_insert(c);
+        }
+        first
+    }
+
     /// Absolute path of an entry. The root `/` is the empty string, so a
-    /// child path is always `parent + "/" + name`.
+    /// child path is always `parent + "/" + name`. On Windows a root is a
+    /// drive, `C:`, and paths use `\\`.
     pub fn path_of(&self, id: u32) -> Vec<u8> {
         let mut chain = Vec::with_capacity(16);
         let mut e = id;
@@ -274,7 +296,7 @@ impl Index {
         let mut out = Vec::with_capacity(chain.len() * 16);
         for (k, &e) in chain.iter().rev().enumerate() {
             if k > 0 {
-                out.push(b'/');
+                out.push(SEP);
             }
             out.extend_from_slice(self.orig_name(e));
         }
@@ -294,7 +316,7 @@ impl Index {
         out.clear();
         for k in (0..n).rev() {
             if k != n - 1 {
-                out.push(b'/');
+                out.push(SEP);
             }
             let e = chain[k];
             out.extend_from_slice(if exact { self.orig_name(e) } else { self.lower_name(e) });
@@ -302,25 +324,34 @@ impl Index {
     }
 
     pub fn resolve_path(&self, path: &[u8]) -> Option<u32> {
-        let path = if path.len() > 1 && path.ends_with(b"/") { &path[..path.len() - 1] } else { path };
-        let path = if path == b"/" { &b""[..] } else { path };
+        // Windows takes either slash, and names in any case.
+        let owned;
+        let path = if cfg!(windows) {
+            owned = path.iter().map(|&b| if b == b'/' { SEP } else { b }).collect::<Vec<u8>>();
+            &owned[..]
+        } else {
+            path
+        };
+        let path = if path.len() > 1 && path.ends_with(&[SEP]) { &path[..path.len() - 1] } else { path };
+        let path = if path == [SEP] { &b""[..] } else { path };
         let mut best: Option<(u32, usize)> = None;
         for &r in &self.roots {
-            let rp = self.orig_name(r);
-            let fits = path == rp || (path.starts_with(rp) && path.get(rp.len()) == Some(&b'/'));
+            let rp = if cfg!(windows) { self.lower_name(r) } else { self.orig_name(r) };
+            let head = path.get(..rp.len()).map(|h| if cfg!(windows) { h.to_ascii_lowercase() } else { h.to_vec() });
+            let fits = head.as_deref() == Some(rp) && (path.len() == rp.len() || path[rp.len()] == SEP);
             if fits && best.is_none_or(|(_, l)| rp.len() >= l) {
                 best = Some((r, rp.len()));
             }
         }
         let (mut cur, plen) = best?;
         let mut lower = Vec::new();
-        for comp in path[plen..].split(|&b| b == b'/').filter(|c| !c.is_empty()) {
+        for comp in path[plen..].split(|&b| b == SEP).filter(|c| !c.is_empty()) {
             if !self.is_dir(cur) {
                 return None;
             }
             lower.clear();
             lower_into(comp, &mut lower);
-            cur = self.child_by_name(cur, comp, &lower)?;
+            cur = if cfg!(windows) { self.child_by_name_nocase(cur, comp, &lower)? } else { self.child_by_name(cur, comp, &lower)? };
         }
         Some(cur)
     }
@@ -415,7 +446,7 @@ impl Index {
     }
 
     pub fn add_root(&mut self, path: &[u8], fs: u16, handle: &[u8]) -> u32 {
-        let name = if path == b"/" { &b""[..] } else { path.strip_suffix(b"/").unwrap_or(path) };
+        let name = if path == b"/" { &b""[..] } else { path.strip_suffix(&[SEP]).unwrap_or(path) };
         let mut lower = Vec::new();
         lower_into(name, &mut lower);
         let id = self.add_dir(NONE, name, &lower, F_ROOT, 0, fs, handle, true);
@@ -820,8 +851,9 @@ mod tests {
     fn dir(idx: &mut Index, parent: u32, name: &str, handle: &[u8]) -> u32 {
         idx.add_dir(parent, name.as_bytes(), &to_lower(name.as_bytes()), 0, 100, 0, handle, true)
     }
+    /// Paths as this system writes them: the tests spell them with `/`.
     fn path(idx: &Index, id: u32) -> String {
-        String::from_utf8(idx.path_of(id)).unwrap()
+        String::from_utf8(idx.path_of(id)).unwrap().replace(SEP as char, "/")
     }
 
     #[test]

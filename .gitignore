@@ -3,3 +3,4 @@
 /gui/tests/build
 *.user
 /dist/out
+gui/build-windows/

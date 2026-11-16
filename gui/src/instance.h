@@ -27,6 +27,8 @@ public:
     };
 
     static QString defaultPath();
+    // A file that serializes launches starting at the same moment.
+    static QString lockPath(const QString &path);
     static Result forward(const QString &path, const LaunchRequest &r, int timeoutMs = 3000);
 
     explicit Instance(QObject *parent = nullptr) : QObject(parent) {}

@@ -12,7 +12,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::index::{DirInfo, Index, NONE};
-use crate::mounts::SavedFs;
+use crate::SavedFs;
 
 const MAGIC: &[u8; 8] = b"EVRYIDX1";
 const VERSION: u32 = 1;

@@ -112,6 +112,7 @@ private:
 
     QCheckBox *m_multiple = nullptr;
     QCheckBox *m_tray = nullptr;
+    QCheckBox *m_autostart = nullptr;
     QComboBox *m_pathClick = nullptr;
     QComboBox *m_terminal = nullptr;
     QLineEdit *m_terminalCustom = nullptr;

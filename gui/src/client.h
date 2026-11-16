@@ -1,5 +1,8 @@
-// Connection to trawlrd: one JSON object per line over a Unix socket.
+// Connection to trawlrd: one JSON object per line over a Unix socket (a
+// named pipe on Windows).
 #pragma once
+#include "platform.h"
+
 #include <QJsonObject>
 #include <QList>
 #include <QLocalSocket>
@@ -16,7 +19,8 @@ struct Row {
     bool isLink = false;
     bool gone = false;
 
-    QString path() const { return dir == QLatin1String("/") ? dir + name : dir + QLatin1Char('/') + name; }
+    // A folder at the top ("/", "C:\") already ends in the separator.
+    QString path() const { return dir.endsWith(Platform::separator()) ? dir + name : dir + Platform::separator() + name; }
 };
 
 struct QueryParams {

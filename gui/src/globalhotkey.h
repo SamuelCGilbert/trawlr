@@ -1,12 +1,14 @@
 #pragma once
 #include <QKeySequence>
 #include <QString>
+#include <functional>
 
-// The system-wide key that opens Trawlr from any program. The desktop owns
-// it, not this program, so it keeps working while no window is open. Only KDE
-// Plasma lets a program set it (through the same service System Settings uses);
-// elsewhere available() is false and the user binds a key to `trawlr`
-// in their desktop's keyboard settings.
+// The system-wide key that opens Trawlr from any program. On Linux the
+// desktop owns it, not this program, so it keeps working while no window is
+// open. Only KDE Plasma lets a program set it (through the same service
+// System Settings uses); elsewhere available() is false and the user binds a
+// key to `trawlr` in their desktop's keyboard settings. On Windows the
+// program registers the keys itself, so they work while it runs (in the tray).
 namespace GlobalHotkey {
 
 // The three on Options > Keyboard. Each is an entry of the
@@ -39,5 +41,9 @@ void block(bool on);
 // Binds `key` (empty removes the binding). On failure returns false and says
 // why in `error`.
 bool set(Action a, const QKeySequence &key, QString *error);
+
+// What to do when a key is pressed, where this program listens for the keys
+// itself (Windows). On Linux the desktop runs the launcher instead.
+void setHandler(std::function<void(Action)> handler);
 
 } // namespace GlobalHotkey

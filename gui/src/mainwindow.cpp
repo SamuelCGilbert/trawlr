@@ -13,9 +13,6 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QDBusPendingCallWatcher>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDrag>
@@ -78,7 +75,7 @@ static QStringList highlightTerms(const QString &text, bool regex)
         if (t.isEmpty() || t.startsWith(QLatin1Char('!')) || t.contains(QLatin1Char(':')))
             continue;
         // For a path term, what can show up in a name is its last component.
-        t = t.section(QLatin1Char('/'), -1);
+        t = t.section(QRegularExpression(QStringLiteral("[/\\\\]")), -1);
         for (const QString &piece : t.split(QRegularExpression(QStringLiteral("[*?]")), Qt::SkipEmptyParts))
             terms.append(piece);
     }
@@ -637,6 +634,11 @@ void MainWindow::updateTrayIcon()
 {
     static QPointer<QSystemTrayIcon> tray;
     const bool want = OptionsDialog::showTrayIcon() && QSystemTrayIcon::isSystemTrayAvailable();
+#ifdef Q_OS_WIN
+    // On Windows the global hotkeys belong to this program: with a tray icon
+    // to come back from, closing the last window keeps it running for them.
+    QApplication::setQuitOnLastWindowClosed(!want);
+#endif
     if (!want) {
         delete tray;
         return;
@@ -765,8 +767,8 @@ void MainWindow::updateStatusBar()
     } else if (!m_client->isConnected()) {
         m_view->setEmptyState(Icons::Offline, tr("Can't reach the index service"),
                               tr("Searching needs the background service, trawlrd. Start it with\n"
-                                 "systemctl start trawlrd\n"
-                                 "and this window connects to it by itself."));
+                                 "%1\n"
+                                 "and this window connects to it by itself.").arg(Platform::startServiceHint()));
     } else if (!m_store->error().isEmpty()) {
         m_view->setEmptyState(Icons::Warning, tr("That search didn't work"), m_store->error());
     } else if (m_indexState == QLatin1String("starting") || m_indexState == QLatin1String("scanning")) {
@@ -785,7 +787,7 @@ void MainWindow::updateIndexPill()
     if (!m_refusal.isEmpty())
         m_pill->setState(StatusPill::Offline, tr("No access"), m_refusal);
     else if (!m_client->isConnected())
-        m_pill->setState(StatusPill::Offline, tr("Offline"), tr("Not connected to the index service (trawlrd).\nIs it running?  systemctl status trawlrd"));
+        m_pill->setState(StatusPill::Offline, tr("Offline"), tr("Not connected to the index service (trawlrd).\nIs it running?  %1").arg(Platform::startServiceHint()));
     else if (m_indexState == QLatin1String("scanning"))
         m_pill->setState(StatusPill::Working, tr("Indexing… %1").arg(loc.toString(m_scanned)), tr("Reading every folder for the first time"));
     else if (m_indexState == QLatin1String("checking"))
@@ -870,30 +872,18 @@ void MainWindow::runInTerminal()
     });
 }
 
-// Ask the file manager, over the desktop-neutral FileManager1 interface, to
-// show the items selected in their folders (or their properties). Falls back
-// to simply opening the folder if nobody answers.
-static void fileManagerCall(QObject *ctx, const QString &method, const QList<Row> &rows)
+static QStringList pathsOf(const QList<Row> &rows)
 {
-    QStringList urls;
+    QStringList paths;
     for (const Row &r : rows)
-        urls << QUrl::fromLocalFile(r.path()).toString();
-    QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.FileManager1"), QStringLiteral("/org/freedesktop/FileManager1"),
-                                                    QStringLiteral("org.freedesktop.FileManager1"), method);
-    m << urls << QString();
-    auto *w = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(m), ctx);
-    const QString dir = rows.first().dir;
-    QObject::connect(w, &QDBusPendingCallWatcher::finished, ctx, [w, dir, method] {
-        if (w->isError() && method == QLatin1String("ShowItems"))
-            QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
-        w->deleteLater();
-    });
+        paths << r.path();
+    return paths;
 }
 
 void MainWindow::openContainingFolder(bool thenHide)
 {
     withSelection(20, [this, thenHide](const QList<Row> &rows) {
-        fileManagerCall(this, QStringLiteral("ShowItems"), rows);
+        Platform::showInFileManager(this, pathsOf(rows), rows.first().dir);
         if (thenHide)
             dismissAfterOpening();
     });
@@ -901,7 +891,7 @@ void MainWindow::openContainingFolder(bool thenHide)
 
 void MainWindow::showProperties()
 {
-    withSelection(20, [this](const QList<Row> &rows) { fileManagerCall(this, QStringLiteral("ShowItemProperties"), rows); });
+    withSelection(20, [this](const QList<Row> &rows) { Platform::showProperties(this, pathsOf(rows)); });
 }
 
 static QMimeData *mimeFor(const QList<Row> &rows)

@@ -14,15 +14,58 @@ pub fn debug_enabled() -> bool {
 /// right level when the daemon runs under systemd.
 #[macro_export]
 macro_rules! info {
-    ($($a:tt)*) => { eprintln!("<6>{}", format_args!($($a)*)) };
+    ($($a:tt)*) => { $crate::util::log(6, format_args!($($a)*)) };
 }
 #[macro_export]
 macro_rules! warn {
-    ($($a:tt)*) => { eprintln!("<4>{}", format_args!($($a)*)) };
+    ($($a:tt)*) => { $crate::util::log(4, format_args!($($a)*)) };
 }
 #[macro_export]
 macro_rules! debug {
-    ($($a:tt)*) => { if $crate::util::debug_enabled() { eprintln!("<7>{}", format_args!($($a)*)) } };
+    ($($a:tt)*) => { if $crate::util::debug_enabled() { $crate::util::log(7, format_args!($($a)*)) } };
+}
+
+static LOG_FILE: std::sync::OnceLock<parking_lot::Mutex<std::fs::File>> = std::sync::OnceLock::new();
+
+/// Send log lines to a file from now on (a Windows service has no console).
+/// The previous log is kept beside it as `.old`.
+pub fn log_to_file(path: &std::path::Path) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::rename(path, path.with_extension("log.old"));
+    let f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let _ = LOG_FILE.set(parking_lot::Mutex::new(f));
+    Ok(())
+}
+
+/// Size at which the log file starts again, so a misbehaving disk cannot
+/// fill another one with messages.
+const LOG_LIMIT: u64 = 5 << 20;
+
+pub fn log(level: u8, args: std::fmt::Arguments) {
+    let Some(file) = LOG_FILE.get() else {
+        if cfg!(windows) {
+            eprintln!("{args}");
+        } else {
+            eprintln!("<{level}>{args}");
+        }
+        return;
+    };
+    use std::io::Write;
+    let tag = match level {
+        0..=3 => "error",
+        4 => "warning",
+        7 => "debug",
+        _ => "info",
+    };
+    let t = now_secs();
+    let tm = crate::query::local_tm(t);
+    let mut f = file.lock();
+    if f.metadata().map(|m| m.len() > LOG_LIMIT).unwrap_or(false) {
+        let _ = f.set_len(0);
+    }
+    let _ = writeln!(f, "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {tag}: {args}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
 /// Append the search form of `name` to `out`.

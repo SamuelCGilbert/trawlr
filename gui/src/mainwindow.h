@@ -38,6 +38,10 @@ public:
     // "system", "light" or "dark", for the whole program.
     static void applyTheme(const QString &key);
 
+    // The notification-area icon, shared by every window; shown or removed
+    // according to the setting.
+    static void updateTrayIcon();
+
     void bringToFront(const QString &activationToken = QString());
     // Out of the way, as the toggle hotkey does: off the
     // screen, the taskbar and Alt+Tab, but still running (the tray icon,
@@ -50,9 +54,6 @@ protected:
     bool event(QEvent *e) override;
 
 private:
-    // The notification-area icon, shared by every window; shown or removed
-    // according to the setting.
-    static void updateTrayIcon();
     static void toggleLastWindow();
     // Activates the window using the desktop's launch token, once the window
     // is on screen. Using the token is what ends KDE's bouncing launch icon.
