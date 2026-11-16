@@ -1,5 +1,7 @@
 # Push a tag such as v0.1.0 to build packages for each distribution and
 # processor and attach them to a draft GitHub release, to check and publish.
+# Run it by hand (Actions > Release > Run workflow) to build the packages
+# without making a release.
 name: Release
 on:
   push:
@@ -22,7 +24,7 @@ jobs:
           if command -v apt-get >/dev/null; then apt-get update -q && apt-get install -yq git
           elif command -v dnf >/dev/null; then dnf install -yq git tar
           else zypper -nq install git tar gzip; fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: sh dist/build-deps.sh package
       - name: Build
         run: |
@@ -34,7 +36,7 @@ jobs:
       - name: Package
         run: |
           if command -v dpkg-deb >/dev/null; then sh dist/package.sh deb; else sh dist/package.sh rpm; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ strategy.job-index }}
           path: dist/out/*
@@ -44,7 +46,7 @@ jobs:
     container: archlinux:latest
     steps:
       - run: pacman -Syu --noconfirm --needed base-devel git qt6-base rust python
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the PKGBUILD from this checkout
         run: |
           useradd -m builder
@@ -54,7 +56,7 @@ jobs:
           chown -R builder /home/builder
           su builder -c 'cd ~ && makepkg -f'
           mkdir -p dist/out && cp /home/builder/trawlr-*.pkg.tar.zst dist/out/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-arch
           path: dist/out/*
@@ -66,7 +68,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: pkg-*
           merge-multiple: true
