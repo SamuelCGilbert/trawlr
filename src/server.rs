@@ -201,11 +201,20 @@ pub enum Access {
 
 const DENIED: &str = if cfg!(windows) {
     "this user is not allowed to search the index (see allowed_users and allowed_groups in C:\\ProgramData\\Trawlr\\config.toml)"
+} else if cfg!(target_os = "macos") {
+    "this user is not allowed to search the index (see allowed_users and allowed_groups in /Library/Application Support/Trawlr/config.toml)"
 } else {
     "this user is not allowed to search the system index (see allowed_users and allowed_groups in /etc/trawlrd/config.toml)"
 };
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+fn peer_uid(stream: &UnixStream) -> Option<u32> {
+    let (mut uid, mut gid) = (0, 0);
+    let r = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) };
+    (r == 0).then_some(uid)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn peer_uid(stream: &UnixStream) -> Option<u32> {
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;

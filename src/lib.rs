@@ -7,7 +7,7 @@
 //!
 //! The index, the search language and the protocol are shared. How the disk
 //! is read and watched is not: fanotify on Linux, the NTFS master file table
-//! and change journal on Windows.
+//! and change journal on Windows, and FSEvents on macOS.
 
 pub mod util;
 pub mod config;
@@ -28,6 +28,13 @@ pub mod sys;
 pub mod watch;
 #[cfg(target_os = "linux")]
 pub use mounts::SavedFs;
+
+#[cfg(target_os = "macos")]
+pub mod mac;
+#[cfg(target_os = "macos")]
+pub use mac::indexer;
+#[cfg(target_os = "macos")]
+pub use mac::SavedFs;
 
 #[cfg(windows)]
 pub mod win;

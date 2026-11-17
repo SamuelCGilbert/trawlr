@@ -52,6 +52,31 @@ Options:
   -V, --version        show the version
 ";
 
+#[cfg(target_os = "macos")]
+const HELP: &str = "\
+trawlrd - keeps a live index of every file name and answers searches
+
+Usage: trawlrd [options]
+
+Runs as the launchd daemon io.trawlr.trawlrd (installed with the program),
+indexing the whole Mac and following changes through FSEvents. Run as a
+normal user it indexes your home folder.
+
+Options:
+  --install-service    register and start the daemon (with sudo)
+  --uninstall-service  stop and remove it
+  --config FILE        configuration file (default
+                       /Library/Application Support/Trawlr/config.toml)
+  --root DIR           index DIR instead of the configured roots (repeatable)
+  --socket PATH        socket to listen on
+  --db PATH            where the index is saved
+  --no-watch           index once and do not follow changes
+  --user               use per-user paths even when running as root
+  --debug              verbose logging
+  -h, --help           show this help
+  -V, --version        show the version
+";
+
 #[cfg(target_os = "linux")]
 const HELP: &str = "\
 trawlrd - keeps a live index of every file name and answers searches
@@ -79,27 +104,27 @@ Options:
 #[derive(PartialEq)]
 enum Mode {
     Run,
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     Service,
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     Install,
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     Uninstall,
 }
 
 fn parse_args() -> Result<(Overrides, Mode), String> {
     let mut ov = Overrides::default();
-    #[cfg_attr(not(windows), allow(unused_mut))]
+    #[cfg_attr(target_os = "linux", allow(unused_mut))]
     let mut mode = Mode::Run;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
         match a.as_str() {
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "macos"))]
             "--service" => mode = Mode::Service,
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "macos"))]
             "--install-service" => mode = Mode::Install,
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "macos"))]
             "--uninstall-service" => mode = Mode::Uninstall,
             "--config" => ov.config = Some(PathBuf::from(value("--config")?)),
             "--socket" => ov.socket = Some(PathBuf::from(value("--socket")?)),
@@ -147,6 +172,34 @@ fn main() {
         Mode::Uninstall => done(service::uninstall(), "the service is removed"),
         Mode::Service => std::process::exit(service::run_service(ov)),
         Mode::Run => std::process::exit(service::run_console(ov)),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn main() {
+    use trawlr::mac::service;
+    let (ov, mode) = match parse_args() {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("trawlrd: {e}");
+            std::process::exit(2);
+        }
+    };
+    let done = |r: Result<(), String>, what: &str| match r {
+        Ok(()) => {
+            println!("trawlrd: {what}");
+            std::process::exit(0)
+        }
+        Err(e) => {
+            eprintln!("trawlrd: {e}");
+            std::process::exit(1)
+        }
+    };
+    match mode {
+        Mode::Install => done(service::install(), "the daemon is installed and running"),
+        Mode::Uninstall => done(service::uninstall(), "the daemon is removed"),
+        Mode::Service => std::process::exit(service::run(ov, true)),
+        Mode::Run => std::process::exit(service::run(ov, false)),
     }
 }
 

@@ -73,6 +73,8 @@ void Platform::showProperties(QObject *, const QStringList &paths)
     }
 }
 
+void Platform::openFullDiskAccessSettings() {}
+
 void Platform::allowForeground()
 {
     AllowSetForegroundWindow(ASFW_ANY);

@@ -83,8 +83,22 @@ jobs:
           name: pkg-windows
           path: dist/out/*.exe
 
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt
+        run: dist/macos/ci-setup.sh >> "$GITHUB_PATH"
+      - name: Build the installer
+        run: dist/macos/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-macos
+          path: dist/out/*.pkg
+
   release:
-    needs: [package, arch, windows]
+    needs: [package, arch, windows, macos]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     timeout-minutes: 30

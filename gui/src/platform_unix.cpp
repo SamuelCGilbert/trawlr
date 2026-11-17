@@ -60,6 +60,8 @@ void Platform::showProperties(QObject *ctx, const QStringList &paths)
     fileManagerCall(ctx, QStringLiteral("ShowItemProperties"), paths, QString());
 }
 
+void Platform::openFullDiskAccessSettings() {}
+
 void Platform::allowForeground() {}
 
 bool Platform::hasStartAtLogin()

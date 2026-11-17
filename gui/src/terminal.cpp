@@ -30,7 +30,7 @@ QString savedCustom()
     return QSettings().value(kCustom).toString();
 }
 
-static bool installed(const QString &program)
+[[maybe_unused]] static bool installed(const QString &program)
 {
     return !QStandardPaths::findExecutable(program).isEmpty();
 }

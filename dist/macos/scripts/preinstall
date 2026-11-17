@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stop the daemon of an earlier version before its files are replaced.
+OLD="/Applications/Trawlr.app/Contents/MacOS/trawlrd"
+[ -x "$OLD" ] && "$OLD" --uninstall-service >/dev/null 2>&1
+exit 0

@@ -2,7 +2,7 @@
 
 # Trawlr
 
-Instant file-name search for Linux and Windows with an index that is always current, in the
+Instant file-name search for Linux, Windows and macOS with an index that is always current, in the
 spirit of [voidtools' Everything](https://www.voidtools.com/).
 
 Type a few letters and every matching file and folder on the machine is listed before you finish the
@@ -14,7 +14,8 @@ Not affiliated with voidtools.
 ## How it works
 
 voidtools' Everything is fast on Windows because it never walks the disk: it reads the NTFS change journal and
-keeps an index in memory. Trawlr does the same on Windows, and the same with what Linux offers on Linux.
+keeps an index in memory. Trawlr does the same on Windows, and the same with what Linux and macOS
+offer on those.
 
 - **`trawlrd`** is a small system service. It holds every file and folder name in memory and
   watches each disk with a single filesystem-wide [fanotify](https://man7.org/linux/man-pages/man7/fanotify.7.html)
@@ -27,6 +28,10 @@ keeps an index in memory. Trawlr does the same on Windows, and the same with wha
   directly, which indexes a drive with a million files in about two seconds, and follows the
   drive's change journal. After a restart it carries on from where the journal left off, so
   nothing is rescanned.
+- **On macOS**, `trawlrd` is a launchd daemon. It reads folders with `getattrlistbulk`, many
+  entries per call, and follows [FSEvents](https://developer.apple.com/documentation/coreservices/file_system_events),
+  which reports changes by path and keeps a history: after a restart the daemon asks for
+  everything since the last event it applied, so here too nothing is rescanned.
 - **The window** (`trawlr-gui`) and **the `trawlr` command** are thin clients. They hold no index
   of their own and open instantly. `trawlr` on its own opens the window; `trawlr` followed by a
   search prints the matches in the terminal.
@@ -43,6 +48,33 @@ install. Administrators can search; see [Who can search](#who-can-search) to let
 
 Global hotkeys are under **Tools → Options → Keyboard**; they work while Trawlr runs, from any
 program, including from the tray with no window open.
+
+### macOS
+
+Download `trawlr-…-macos.pkg` from the [Releases](../../releases) page. It runs on Apple Silicon
+and Intel Macs with macOS 12 or newer.
+
+The package is not signed with an Apple Developer ID (that costs money, and Trawlr is free), so
+macOS will not open it with a double-click the first time. Either right-click it and choose
+**Open**, or, on macOS 15 and later, double-click it, then go to **System Settings → Privacy &
+Security** and click **Open Anyway** next to the message about it.
+
+The installer puts Trawlr in Applications, starts the indexing daemon (which indexes the whole Mac,
+including disks under `/Volumes`) and adds the `trawlr` command to `/usr/local/bin`. Administrators
+can search; see [Who can search](#who-can-search) to let others in.
+
+One more step: macOS keeps Desktop, Documents, Downloads, Mail and a few other folders private from
+every program that has not been given **Full Disk Access**, root daemons included, so until then
+Trawlr cannot list them (the window says so). In **System Settings → Privacy & Security → Full Disk
+Access**, click **+**, press **⇧⌘G**, enter `/Applications/Trawlr.app/Contents/MacOS/trawlrd`,
+click **Open** and make sure it is switched on. The folders appear in the results within a minute.
+Because the program is not signed with a Developer ID, macOS forgets this permission when Trawlr is
+updated; turn it off and on again (or remove and add it) after an update.
+
+Global hotkeys are under **Settings (⌘,) → Keyboard**. They work while Trawlr runs, including from
+its menu-bar icon with no window open, and *Start Trawlr when I sign in* is under General.
+
+To remove everything: `sudo "/Applications/Trawlr.app/Contents/Resources/uninstall.sh"`.
 
 ### Linux
 
@@ -206,7 +238,8 @@ Matching is case-insensitive unless asked otherwise. Results are sorted by name 
 ## Configuration
 
 `/etc/trawlrd/config.toml` on Linux (see [`dist/config.toml`](dist/config.toml) for every option),
-`C:\ProgramData\Trawlr\config.toml` on Windows (see [`dist/windows/config.toml`](dist/windows/config.toml)):
+`C:\ProgramData\Trawlr\config.toml` on Windows (see [`dist/windows/config.toml`](dist/windows/config.toml)),
+`/Library/Application Support/Trawlr/config.toml` on macOS (see [`dist/macos/config.toml`](dist/macos/config.toml)):
 
 ```toml
 roots = ["/"]                                   # what to index
@@ -218,7 +251,8 @@ allowed_groups = ["sudo", "wheel", "trawlr"]    # ... and members of these group
 
 Apply changes with `sudo systemctl restart trawlrd`, or on Windows, in an administrator Command
 Prompt, `sc stop trawlrd && sc start trawlrd`. On Windows `roots` names whole drives (`["C:", "D:"]`,
-default: every local NTFS drive) and paths are written with `\`.
+default: every local NTFS drive) and paths are written with `\`. On macOS:
+`sudo launchctl kickstart -k system/io.trawlr.trawlrd`.
 
 Local disk filesystems are indexed across mount points automatically, and drives are added and
 removed as they are mounted and unmounted. Virtual filesystems (`/proc`, tmpfs, overlay, snap
@@ -243,6 +277,9 @@ reads file contents.
   `net localgroup trawlr /add`, then `net localgroup trawlr NAME /add`. The service keeps its
   index in `C:\ProgramData\Trawlr`, which it makes readable by administrators only, answers only
   on the local machine, and drops every privilege it does not need.
+- On macOS the daemon runs as root. Members of the `admin` group (every administrator account)
+  can search; add `"staff"` to `allowed_groups` to let every user in. Its index is in
+  `/Library/Application Support/Trawlr`, readable by root only.
 - On Linux the service is confined by systemd to exactly what it needs: two capabilities
   (`CAP_SYS_ADMIN` for fanotify, `CAP_DAC_READ_SEARCH` to list folders), no network, and a read-only
   view of the system apart from its own state directory. See [`dist/trawlrd.service`](dist/trawlrd.service).
@@ -300,6 +337,10 @@ trawlr --rebuild               # throw the index away and start over
 On Windows: `sc query trawlrd` (is it running?), the log in `C:\ProgramData\Trawlr\trawlrd.log`
 (as administrator), and the same `trawlr --status`, `--rescan`, `--rebuild`.
 
+On macOS: `sudo launchctl print system/io.trawlr.trawlrd` (is it running?), the log in
+`/Library/Logs/Trawlr/trawlrd.log` (`sudo cat` it), and the same `trawlr` commands. `trawlr --status`
+lists folders it could not read; most often that means Full Disk Access (see [Install](#macos)).
+
 "this user is not allowed to search the system index": add the user to the `trawlr` group
 (`sudo usermod -aG trawlr NAME`, no restart needed), or to `allowed_users` in
 `/etc/trawlrd/config.toml` and restart the service.
@@ -329,10 +370,18 @@ powershell -File dist\windows\build.ps1       &:: the programs and the installer
 powershell -File tests\windows\run.ps1        &:: as administrator: index C: and check live updates
 ```
 
+On macOS, with Rust and Qt 6 for macOS (`qmake` on PATH):
+
+```sh
+cargo test --release
+dist/macos/build.sh            # Trawlr.app and the installer package (universal), in dist/out
+tests/macos/run.sh             # with sudo: index the whole Mac and check live updates and restarts
+```
+
 Releases: push a tag such as `v0.1.0` and [`release.yml`](.github/workflows/release.yml) builds
 the packages ([`dist/package.sh`](dist/package.sh), [`dist/arch/PKGBUILD`](dist/arch/PKGBUILD))
-for x86_64 and arm64, and the Windows installer ([`dist/windows`](dist/windows)), and attaches
-them to a draft release.
+for x86_64 and arm64, the Windows installer ([`dist/windows`](dist/windows)) and the macOS
+package ([`dist/macos`](dist/macos)), and attaches them to a draft release.
 
 The layout: [`src/index.rs`](src/index.rs) is the in-memory index, [`src/query.rs`](src/query.rs)
 the search language and matcher, [`src/scan.rs`](src/scan.rs) reads directories,
@@ -341,7 +390,10 @@ writer that ties them together, [`src/server.rs`](src/server.rs) the socket prot
 [`gui/`](gui) the Qt client. On Windows, [`src/win/`](src/win) replaces the Linux disk reading and
 watching: [`ntfs.rs`](src/win/ntfs.rs) reads the MFT, [`usn.rs`](src/win/usn.rs) the change
 journal, [`indexer.rs`](src/win/indexer.rs) applies them, and [`pipe.rs`](src/win/pipe.rs) and
-[`service.rs`](src/win/service.rs) are the named pipe and the service.
+[`service.rs`](src/win/service.rs) are the named pipe and the service. On macOS,
+[`src/mac/`](src/mac) does the same with [`scan.rs`](src/mac/scan.rs) (`getattrlistbulk`),
+[`fsevents.rs`](src/mac/fsevents.rs), [`indexer.rs`](src/mac/indexer.rs) and
+[`service.rs`](src/mac/service.rs) (launchd).
 
 ## License
 

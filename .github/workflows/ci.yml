@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -47,3 +48,50 @@ jobs:
       # Indexes the runner's C: drive and checks live updates against it.
       - name: Live index test
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\windows\run.ps1
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Qt
+        run: dist/macos/ci-setup.sh >> "$GITHUB_PATH"
+      - name: Build
+        id: build
+        run: |
+          cargo build --release --locked
+          dist/macos/build.sh
+      - name: Daemon tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cargo test --release --locked
+      - name: Window tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p gui/tests/build && cd gui/tests/build && qmake ../tests.pro && make -j"$(sysctl -n hw.ncpu)"
+          QT_QPA_PLATFORM=offscreen ./tst_gui
+      - name: Stress test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          TRAWLRD_ARGS=--debug python3 tests/stress.py --rounds 10 || { mkdir -p /tmp/stress && cp ~/.cache/evt*/r/log /tmp/stress/ && (cd ~/.cache && find evt* -print > /tmp/stress/tree.txt); exit 1; }
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: stress-log
+          path: /tmp/stress
+      # Indexes the runner's whole disk as root and checks live updates,
+      # restarts and catching up with FSEvents against it.
+      - name: Live index test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: tests/macos/run.sh
+      # Installs the package as a user would, checks the launchd daemon and
+      # the window, then uninstalls it.
+      - name: Installer test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p /tmp/shots
+          tests/macos/install.sh dist/out/trawlr-*-macos.pkg /tmp/shots/window.png
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        with:
+          name: macos-screenshots
+          path: /tmp/shots

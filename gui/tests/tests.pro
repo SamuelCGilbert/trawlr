@@ -13,7 +13,12 @@ HEADERS += ../src/client.h ../src/resultstore.h ../src/resultsview.h ../src/main
     ../src/instance.h ../src/shortcuts.h ../src/globalhotkey.h ../src/optionsdialog.h ../src/windowactivation.h \
     ../src/theme.h ../src/icons.h ../src/widgets.h \
     ../src/terminal.h ../src/platform.h
-win32 {
+macx {
+    SOURCES += ../src/globalhotkey_mac.cpp
+    OBJECTIVE_SOURCES += ../src/windowactivation_mac.mm ../src/platform_mac.mm
+    LIBS += -framework AppKit -framework Carbon
+    CONFIG -= app_bundle
+} else:win32 {
     SOURCES += ../src/globalhotkey_win.cpp ../src/windowactivation_win.cpp ../src/platform_win.cpp
     LIBS += -luser32 -lshell32 -lole32 -ladvapi32
 } else {

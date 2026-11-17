@@ -61,3 +61,7 @@ bool WindowActivation::viaKWin(const QString &title)
     });
     return ok;
 }
+
+void WindowActivation::activateApp() {}
+
+void WindowActivation::setDockIcon(bool) {}

@@ -566,7 +566,7 @@ QWidget *OptionsDialog::buildKeyboardPage()
     if (!canSet)
         note = tr("This desktop does not let programs set a global hotkey. Bind keys in your desktop's keyboard settings to the commands "
                   "<b>trawlr</b>, <b>trawlr --new-window</b> and <b>trawlr --toggle</b>.");
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     else
         note = tr("These work from any program while Trawlr is running, including from the tray with no window open.");
 #else

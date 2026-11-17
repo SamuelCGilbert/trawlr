@@ -13,4 +13,11 @@ namespace WindowActivation {
 // Returns false if KWin is not there to ask.
 bool viaKWin(const QString &title);
 
+// macOS: make this the active application, so its window comes forward.
+void activateApp();
+
+// macOS: show the Dock icon (and menu bar) while a window is open, and drop
+// them while Trawlr only waits in the menu bar for its hotkeys.
+void setDockIcon(bool shown);
+
 } // namespace WindowActivation

@@ -92,6 +92,8 @@ private:
     void trashSelected();
     void showProperties();
     void startDrag();
+    QWidget *buildPrivacyNotice(QWidget *parent);
+    static void updateDockIcon();
     void showContextMenu(const QPoint &globalPos);
     void addExcludeMenu(QMenu *menu);
     void showSyntaxHelp();
@@ -108,6 +110,8 @@ private:
     QLabel *m_countLabel;
     QLabel *m_timeLabel;
     StatusPill *m_pill;
+    QWidget *m_notice = nullptr;
+    bool m_noticeDismissed = false;
     QAction *m_showMenuBar = nullptr;
     QAction *m_autoFitColumns = nullptr;
 

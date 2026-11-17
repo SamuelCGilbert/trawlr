@@ -26,7 +26,8 @@ class Daemon:
     def start(self):
         log = open(os.path.join(self.run, "log"), "ab")
         self.proc = subprocess.Popen(
-            [os.path.join(BIN, "trawlrd"), "--root", self.root, "--socket", self.sock, "--db", os.path.join(self.run, "index.db")],
+            [os.path.join(BIN, "trawlrd"), "--root", self.root, "--socket", self.sock, "--db", os.path.join(self.run, "index.db")]
+            + os.environ.get("TRAWLRD_ARGS", "").split(),
             stdout=log, stderr=log)
         for _ in range(200):
             if os.path.exists(self.sock) and self.status().get("state") == "ready":

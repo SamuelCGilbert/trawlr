@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>trawlr-gui</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.trawlr.Trawlr</string>
+	<key>CFBundleName</key>
+	<string>Trawlr</string>
+	<key>CFBundleDisplayName</key>
+	<string>Trawlr</string>
+	<key>CFBundleIconFile</key>
+	<string>app-icon.icns</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© Sam Gilbert. GPL-3.0-or-later.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Trawlr asks Finder to show Get Info for the files you choose.</string>
+</dict>
+</plist>

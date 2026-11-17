@@ -233,6 +233,7 @@ QToolTip {
 }
 
 QMenuBar { background: {canvas}; color: {text}; border-bottom: 1px solid {divider}; padding: 2px 4px; }
+QFrame#notice { background: {accentSoft}; border: none; border-radius: 10px; margin: 0 14px 8px 14px; }
 QMenuBar::item { background: transparent; padding: 4px 9px; border-radius: 6px; }
 QMenuBar::item:selected { background: {hover}; }
 QMenuBar::item:pressed { background: {pressed}; }

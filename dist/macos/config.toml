@@ -1,0 +1,24 @@
+# Trawlr service configuration (macOS).
+#
+# Edit with administrator rights:
+#   sudo nano "/Library/Application Support/Trawlr/config.toml"
+# then restart the service:
+#   sudo launchctl kickstart -k system/io.trawlr.trawlrd
+
+# What to index. Default: the whole Mac ("/"), including disks under /Volumes.
+# roots = ["/"]
+
+# Folders to leave out, with everything in them.
+# exclude = ["/Users/me/Library/Caches"]
+
+# Names to leave out wherever they appear (* and ? are wildcards).
+# exclude_names = ["node_modules", ".git"]
+
+# Who may search. The index lists every file on the Mac, other users' too,
+# so only these users and groups (and root) are answered. "admin" is every
+# administrator account; add "staff" to let every user search.
+allowed_groups = ["admin"]
+# allowed_users = ["someone"]
+
+# Network and other volume types to index too (local disks always are).
+# extra_fs_types = ["smbfs"]

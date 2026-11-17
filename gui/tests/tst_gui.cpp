@@ -14,6 +14,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QDesktopServices>
+#include <QDir>
 #include <QHeaderView>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -41,7 +42,13 @@ public slots:
 
 class GuiTest : public QObject {
     Q_OBJECT
+#ifdef Q_OS_UNIX
+    // A short path (macOS's own temporary folder is long), written the way
+    // the daemon writes it (/tmp is a link to /private/tmp on macOS).
+    QTemporaryDir m_dir{QDir(QStringLiteral("/tmp")).canonicalPath() + QStringLiteral("/tst_gui-XXXXXX")};
+#else
     QTemporaryDir m_dir;
+#endif
     QProcess m_daemon;
     MainWindow *m_win = nullptr;
     QLineEdit *m_search = nullptr;
@@ -350,12 +357,15 @@ private slots:
 
     void terminalPlans()
     {
+#ifndef Q_OS_MACOS
+        // The Linux terminals (macOS has Terminal and iTerm instead).
         const Terminal::Plan open = Terminal::plan("konsole", {}, "/tmp/a b", {});
         QCOMPARE(open.program, QStringLiteral("konsole"));
         QCOMPARE(open.arguments, (QStringList{"--workdir", "/tmp/a b"}));
         QCOMPARE(open.workingDirectory, QStringLiteral("/tmp/a b"));
         const Terminal::Plan run = Terminal::plan("gnome-terminal", {}, "/d", {"x", "y z"});
         QCOMPARE(run.arguments, (QStringList{"--working-directory=/d", "--", "x", "y z"}));
+#endif
         const Terminal::Plan custom = Terminal::plan("custom", "foot -D {dir} {cmd} --last", "/d", {"a", "b c"});
         QCOMPARE(custom.program, QStringLiteral("foot"));
         QCOMPARE(custom.arguments, (QStringList{"-D", "/d", "a", "b c", "--last"}));

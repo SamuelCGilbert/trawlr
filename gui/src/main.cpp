@@ -2,6 +2,7 @@
 #include "instance.h"
 #include "mainwindow.h"
 #include "platform.h"
+#include "windowactivation.h"
 
 #include <QAction>
 #include <QApplication>
@@ -129,8 +130,22 @@ int main(int argc, char **argv)
         }
     }
 
+#ifdef Q_OS_MACOS
+    // A Mac app that is already running is not started again when its icon
+    // is clicked; it is made active. With no window open, open one then.
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app, [](Qt::ApplicationState s) {
+        if (s != Qt::ApplicationActive)
+            return;
+        for (QWidget *w : QApplication::topLevelWidgets())
+            if (qobject_cast<MainWindow *>(w) && w->isVisible())
+                return;
+        if (!QApplication::activeModalWidget() && !QApplication::activePopupWidget())
+            MainWindow::handleLaunch(LaunchRequest());
+    });
+#endif
     if (background && shot.isEmpty()) {
         MainWindow::updateTrayIcon();
+        WindowActivation::setDockIcon(false);
         return app.exec();
     }
     MainWindow *w = new MainWindow(words.join(QLatin1Char(' ')));

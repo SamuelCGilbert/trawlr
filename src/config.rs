@@ -5,12 +5,19 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub const SYSTEM_SOCKET: &str = "/run/trawlrd/trawlrd.sock";
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub const SYSTEM_DB: &str = "/var/lib/trawlrd/index.db";
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub const SYSTEM_CONFIG: &str = "/etc/trawlrd/config.toml";
+
+#[cfg(target_os = "macos")]
+pub const SYSTEM_SOCKET: &str = "/var/run/trawlrd/trawlrd.sock";
+#[cfg(target_os = "macos")]
+pub const SYSTEM_DB: &str = "/Library/Application Support/Trawlr/index.db";
+#[cfg(target_os = "macos")]
+pub const SYSTEM_CONFIG: &str = "/Library/Application Support/Trawlr/config.toml";
 
 /// The service's named pipe. Clients reach it as `\\.\pipe\trawlrd`.
 #[cfg(windows)]
@@ -26,11 +33,14 @@ pub fn data_dir() -> PathBuf {
 /// Local, on-disk filesystems indexed without being asked. Virtual ones
 /// (proc, sysfs, tmpfs, overlay, squashfs) and network mounts are left out
 /// unless named in `extra_fs_types` or listed as a root.
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 const DEFAULT_FS_TYPES: &[&str] = &[
     "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "zfs", "bcachefs", "jfs", "reiserfs", "nilfs2", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk",
     "hfsplus", "udf",
 ];
+/// Local disks on a Mac (lifs is how recent macOS mounts FAT and exFAT).
+#[cfg(target_os = "macos")]
+const DEFAULT_FS_TYPES: &[&str] = &["apfs", "hfs", "msdos", "exfat", "lifs", "ntfs", "udf"];
 /// Windows indexes NTFS volumes by reading their master file table.
 #[cfg(windows)]
 const DEFAULT_FS_TYPES: &[&str] = &["NTFS"];
@@ -218,11 +228,23 @@ fn groups_of(uid: u32) -> Vec<u32> {
     }
     let mut n: libc::c_int = 64;
     loop {
-        let mut gids = vec![0 as libc::gid_t; n as usize];
         let want = n;
-        let r = unsafe { libc::getgrouplist(pw.pw_name, pw.pw_gid, gids.as_mut_ptr(), &mut n) };
+        #[cfg(not(target_os = "macos"))]
+        let (r, gids) = {
+            let mut gids = vec![0 as libc::gid_t; n as usize];
+            let r = unsafe { libc::getgrouplist(pw.pw_name, pw.pw_gid, gids.as_mut_ptr(), &mut n) };
+            (r, gids)
+        };
+        // macOS takes and returns the ids as signed ints.
+        #[cfg(target_os = "macos")]
+        let (r, gids) = {
+            let mut gids = vec![0 as libc::c_int; n as usize];
+            let r = unsafe { libc::getgrouplist(pw.pw_name, pw.pw_gid as libc::c_int, gids.as_mut_ptr(), &mut n) };
+            (r, gids.into_iter().map(|g| g as u32).collect::<Vec<u32>>())
+        };
         if r >= 0 {
-            gids.truncate(n as usize);
+            let mut gids = gids;
+            gids.truncate((n as usize).min(gids.len()));
             return gids;
         }
         // Too small: n now holds the size needed (glibc), or ask for more.
@@ -328,6 +350,10 @@ impl Settings {
         // Our own log changes with every line written to it.
         #[cfg(windows)]
         exclude_paths.insert(bytes_of(&data_dir().join("trawlrd.log")));
+        #[cfg(target_os = "macos")]
+        for log in [crate::mac::LOG_FILE.to_string(), format!("{}.old", crate::mac::LOG_FILE)] {
+            exclude_paths.insert(bytes_of(Path::new(&log)));
+        }
         // Windows names compare without case.
         let exclude_names = cfg.exclude_names.iter().map(|n| if cfg!(windows) { crate::util::to_lower(n.as_bytes()) } else { n.as_bytes().to_vec() }).collect();
         let mut fs_types: HashSet<String> = DEFAULT_FS_TYPES.iter().map(|s| s.to_string()).collect();
@@ -390,6 +416,11 @@ impl Settings {
 
     pub fn fs_allowed(&self, fstype: &str) -> bool {
         self.fs_types.contains(fstype)
+    }
+
+    /// Named in `extra_fs_types`: indexed even when it is not a local disk.
+    pub fn fs_explicit(&self, fstype: &str) -> bool {
+        self.cfg.extra_fs_types.iter().any(|t| t == fstype)
     }
 
     pub fn is_root(&self, path: &[u8]) -> bool {

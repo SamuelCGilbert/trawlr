@@ -21,7 +21,7 @@ use memchr::memmem::Finder;
 use rayon::prelude::*;
 use regex::bytes::{Regex, RegexBuilder};
 
-use crate::index::{Index, F_DEAD, F_ROOT, NONE, SEP};
+use crate::index::{Index, F_DEAD, F_ROOT, F_SYMLINK, NONE, SEP};
 use crate::util::to_lower;
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -198,6 +198,8 @@ enum Leaf {
     /// Regex or wildcard over the whole path; has to build each path.
     PathRe { re: Regex, exact: bool },
     Ext(Vec<Vec<u8>>),
+    /// A folder or link with this extension (a macOS bundle such as `.app`).
+    Bundle(Vec<u8>),
     Size(u64, u64),
     Mtime(u32, u32),
     File,
@@ -268,6 +270,10 @@ fn eval_leaf(l: &Leaf, c: &Ctx, i: u32) -> bool {
             }
             let e = ext_of(idx.lower_name(i));
             !e.is_empty() && list.iter().any(|x| x == e)
+        }
+        Leaf::Bundle(e) => {
+            let n = idx.lower_name(i);
+            (idx.is_dir(i) || idx.flags(i) & F_SYMLINK != 0) && n.len() > e.len() + 1 && n.ends_with(e) && n[n.len() - e.len() - 1] == b'.'
         }
         Leaf::Size(lo, hi) => !idx.is_dir(i) && (*lo..=*hi).contains(&idx.file_size(i)),
         Leaf::Mtime(lo, hi) => (*lo..=*hi).contains(&idx.mtime(i)),
@@ -524,6 +530,10 @@ impl Parser<'_> {
                 "pic" => filters.push(Node::Leaf(ext_list(PIC))),
                 "doc" => filters.push(Node::Leaf(ext_list(DOC))),
                 "zip" => filters.push(Node::Leaf(ext_list(ZIP))),
+                // On a Mac a program is an .app bundle, which is a folder.
+                "exe" if cfg!(target_os = "macos") => {
+                    filters.push(Node::Or(vec![Node::Leaf(ext_list(EXE)), Node::Leaf(Leaf::Bundle(b"app".to_vec()))]))
+                }
                 "exe" => filters.push(Node::Leaf(ext_list(EXE))),
                 "empty" => filters.push(Node::Leaf(Leaf::EmptyDir)),
                 "ext" => {

@@ -17,8 +17,16 @@ HEADERS += src/client.h src/resultstore.h src/resultsview.h src/mainwindow.h src
 RESOURCES += resources.qrc
 
 # The desktop integration differs per system: KDE over D-Bus on Linux,
-# the Windows API on Windows.
-win32 {
+# the Windows API on Windows, AppKit and Carbon on macOS.
+macx {
+    QT += svg
+    SOURCES += src/globalhotkey_mac.cpp
+    OBJECTIVE_SOURCES += src/windowactivation_mac.mm src/platform_mac.mm
+    LIBS += -framework AppKit -framework Carbon
+    QMAKE_INFO_PLIST = ../dist/macos/Info.plist
+    ICON = ../assets/app-icon.icns
+    QMAKE_MACOSX_DEPLOYMENT_TARGET = 12.0
+} else:win32 {
     # Draws the SVG window and tray icon (Linux has the icon theme for that).
     QT += svg
     SOURCES += src/globalhotkey_win.cpp src/windowactivation_win.cpp src/platform_win.cpp

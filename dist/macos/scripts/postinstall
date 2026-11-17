@@ -1,0 +1,7 @@
+#!/bin/sh
+# Register and start the indexing daemon, and put the trawlr command on PATH.
+APP="/Applications/Trawlr.app"
+"$APP/Contents/MacOS/trawlrd" --install-service || exit 1
+mkdir -p /usr/local/bin
+ln -sf "$APP/Contents/MacOS/trawlr" /usr/local/bin/trawlr
+exit 0

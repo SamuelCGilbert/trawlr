@@ -8,6 +8,7 @@
 #include "theme.h"
 #include "widgets.h"
 #include "windowactivation.h"
+#include "platform.h"
 
 #include <QActionGroup>
 #include <QApplication>
@@ -17,6 +18,7 @@
 #include <QDialog>
 #include <QDrag>
 #include <QFile>
+#include <QFrame>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLabel>
@@ -122,7 +124,9 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     m_busy = new BusyBar(central);
     m_view = new ResultsView(m_store, central);
     m_view->installEventFilter(this);
+    m_notice = buildPrivacyNotice(central);
     layout->addWidget(header);
+    layout->addWidget(m_notice);
     layout->addWidget(m_busy);
     layout->addWidget(m_view, 1);
     setCentralWidget(central);
@@ -170,7 +174,9 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     connect(m_search, &QLineEdit::textChanged, this, &MainWindow::runSearch);
     const QList<QPair<QAction *, QString>> switches = {
         {m_matchCase, "search/matchCase"}, {m_wholeWord, "search/wholeWord"}, {m_matchPath, "search/matchPath"}, {m_regex, "search/regex"}};
-    for (const auto &[a, key] : switches) {
+    for (const auto &sw : switches) {
+        QAction *a = sw.first;
+        const QString key = sw.second;
         connect(a, &QAction::toggled, this, &MainWindow::runSearch);
         // Saved at once: with the tray, a window may never be closed, and
         // the next window or start should find the switch as it was left.
@@ -213,6 +219,11 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     connect(m_client, &Client::statusReply, this, [this](const QJsonObject &st) {
         m_indexState = st.value("state").toString();
         m_scanned = qint64(st.value("scanned").toDouble());
+        // macOS keeps some folders from trawlrd until it has Full Disk Access.
+        const bool private_ = st.value("needs_full_disk_access").toBool();
+        m_notice->setVisible(private_ && !m_noticeDismissed);
+        if (private_)
+            QTimer::singleShot(15000, m_client, &Client::requestStatus);
         if (m_indexState != QLatin1String("scanning") && m_indexState != QLatin1String("checking") && m_indexState != QLatin1String("starting"))
             m_statusTimer.stop();
         updateIndexPill();
@@ -571,6 +582,8 @@ static bool onWayland()
 
 void MainWindow::bringToFront(const QString &activationToken)
 {
+    WindowActivation::setDockIcon(true);
+    WindowActivation::activateApp();
     if (isMinimized())
         setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
@@ -628,6 +641,16 @@ void MainWindow::hideAway(const QString &activationToken)
         qunsetenv("XDG_ACTIVATION_TOKEN");
     }
     hide();
+    updateDockIcon();
+}
+
+void MainWindow::updateDockIcon()
+{
+    // Without a tray icon the Dock is the way back to a hidden window.
+    bool shown = !OptionsDialog::showTrayIcon() || !QSystemTrayIcon::isSystemTrayAvailable();
+    for (const QPointer<MainWindow> &w : std::as_const(windows()))
+        shown = shown || (w && w->isVisible());
+    WindowActivation::setDockIcon(shown);
 }
 
 void MainWindow::toggleLastWindow()
@@ -641,13 +664,45 @@ void MainWindow::toggleLastWindow()
         w->bringToFront();
 }
 
+QWidget *MainWindow::buildPrivacyNotice(QWidget *parent)
+{
+    auto *box = new QFrame(parent);
+    box->setObjectName("notice");
+    auto *row = new QHBoxLayout(box);
+    row->setContentsMargins(14, 10, 10, 10);
+    row->setSpacing(10);
+    auto *text = new QLabel(tr("<b>Some folders are hidden from Trawlr.</b> macOS keeps Desktop, Documents, Downloads and other private "
+                               "folders from programs without Full Disk Access. In <b>Privacy &amp; Security → Full Disk Access</b>, "
+                               "click <b>+</b>, press <b>⇧⌘G</b>, enter <b>/Applications/Trawlr.app/Contents/MacOS/trawlrd</b> "
+                               "and switch it on. They show up here within a minute."),
+                            box);
+    text->setWordWrap(true);
+    text->setTextFormat(Qt::RichText);
+    row->addWidget(text, 1);
+    auto *open = new QPushButton(tr("Open Settings"), box);
+    open->setAutoDefault(false);
+    connect(open, &QPushButton::clicked, this, [] { Platform::openFullDiskAccessSettings(); });
+    row->addWidget(open, 0, Qt::AlignVCenter);
+    auto *close = new QToolButton(box);
+    close->setText(QStringLiteral("✕"));
+    close->setToolTip(tr("Hide until Trawlr is started again"));
+    close->setAutoRaise(true);
+    connect(close, &QToolButton::clicked, this, [this] {
+        m_noticeDismissed = true;
+        m_notice->hide();
+    });
+    row->addWidget(close, 0, Qt::AlignTop);
+    box->hide();
+    return box;
+}
+
 void MainWindow::updateTrayIcon()
 {
     static QPointer<QSystemTrayIcon> tray;
     const bool want = OptionsDialog::showTrayIcon() && QSystemTrayIcon::isSystemTrayAvailable();
-#ifdef Q_OS_WIN
-    // On Windows the global hotkeys belong to this program: with a tray icon
-    // to come back from, closing the last window keeps it running for them.
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // On Windows and macOS the global hotkeys belong to this program: with a
+    // tray icon to come back from, closing the last window keeps it running.
     QApplication::setQuitOnLastWindowClosed(!want);
 #endif
     if (!want) {
@@ -1236,4 +1291,6 @@ void MainWindow::closeEvent(QCloseEvent *e)
     s.setValue("search/matchPath", m_matchPath->isChecked());
     s.setValue("search/regex", m_regex->isChecked());
     QMainWindow::closeEvent(e);
+    // Once it is gone: no window left may mean no Dock icon (macOS).
+    QTimer::singleShot(0, qApp, &MainWindow::updateDockIcon);
 }

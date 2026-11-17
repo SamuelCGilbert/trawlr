@@ -1,5 +1,5 @@
-// What differs between Linux and Windows outside the window itself: where
-// the index service listens, how paths are written, the file manager.
+// What differs between Linux, Windows and macOS outside the window itself:
+// where the index service listens, how paths are written, the file manager.
 #pragma once
 #include <QChar>
 #include <QObject>
@@ -29,8 +29,11 @@ void showProperties(QObject *ctx, const QStringList &paths);
 // the front, and passes that right on only when asked to.
 void allowForeground();
 
-// Whether Trawlr starts (in the tray) when the user signs in. Only Windows
-// has this here; elsewhere the desktop's own autostart settings do it.
+// Open the Full Disk Access list in System Settings (macOS; nothing elsewhere).
+void openFullDiskAccessSettings();
+
+// Whether Trawlr starts (in the tray) when the user signs in. Windows and
+// macOS have this here; on Linux the desktop's own autostart settings do it.
 bool hasStartAtLogin();
 bool startsAtLogin();
 void setStartAtLogin(bool on);

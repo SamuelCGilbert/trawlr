@@ -58,11 +58,16 @@ struct Client {
     writer: UnixStream,
 }
 
+#[cfg(target_os = "macos")]
+const SERVICE_HINT: &str = "sudo launchctl print system/io.trawlr.trawlrd";
+#[cfg(all(unix, not(target_os = "macos")))]
+const SERVICE_HINT: &str = "systemctl status trawlrd";
+
 impl Client {
     fn connect() -> Result<Client, String> {
         let path = client_socket();
         #[cfg(unix)]
-        let s = UnixStream::connect(&path).map_err(|e| format!("cannot reach trawlrd at {}: {e}\nIs the service running?  systemctl status trawlrd", path.display()))?;
+        let s = UnixStream::connect(&path).map_err(|e| format!("cannot reach trawlrd at {}: {e}\nIs the service running?  {SERVICE_HINT}", path.display()))?;
         #[cfg(windows)]
         let s = std::fs::OpenOptions::new()
             .read(true)
@@ -121,9 +126,10 @@ fn window_program() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("TRAWLR_GUI") {
         return Some(p.into());
     }
-    // Installed side by side; else wherever PATH finds it.
+    // Installed side by side (this may be a link to it, as on macOS, where
+    // /usr/local/bin/trawlr points into the app); else wherever PATH finds it.
     let name = format!("trawlr-gui{}", std::env::consts::EXE_SUFFIX);
-    if let Ok(exe) = std::env::current_exe() {
+    if let Ok(exe) = std::env::current_exe().and_then(|e| e.canonicalize()) {
         let p = exe.with_file_name(&name);
         if p.is_file() {
             return Some(p);
@@ -218,6 +224,15 @@ fn run() -> Result<i32, String> {
                 println!("  {} ({}): watched {}", f["mount"].as_str().unwrap_or("?"), f["type"].as_str().unwrap_or("?"), f["watch"].as_str().unwrap_or("?"));
             }
             println!("  {} change events handled since start", n("events"));
+            if n("unreadable_folders") > 0 {
+                println!("  {} folders could not be read, such as:", n("unreadable_folders"));
+                for p in s["unreadable"].as_array().into_iter().flatten().take(5) {
+                    println!("    {}", p.as_str().unwrap_or("?"));
+                }
+                if s["needs_full_disk_access"].as_bool() == Some(true) {
+                    println!("  Give trawlrd Full Disk Access to index them (System Settings > Privacy & Security).");
+                }
+            }
             if n("unwatched_folders") > 0 {
                 println!("  warning: {} folders are not watched (fs.fanotify.max_user_marks reached)", n("unwatched_folders"));
             }
