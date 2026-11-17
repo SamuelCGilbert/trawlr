@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
@@ -119,6 +120,10 @@ private slots:
         m_view = m_win->findChild<ResultsView *>();
         m_store = m_win->findChild<ResultStore *>();
         QVERIFY(m_search && m_view && m_store);
+        // Match Path is on unless turned off. Off here, so the temporary
+        // folder's random name cannot match the test searches.
+        QVERIFY(action("Match Path")->isChecked());
+        action("Match Path")->trigger();
         // 5 files + 3 folders
         QTRY_COMPARE_WITH_TIMEOUT(status(), QStringLiteral("8 items"), 10000);
     }
@@ -640,6 +645,51 @@ private slots:
         MainWindow::handleLaunch(LaunchRequest());
         QVERIFY(m_search->text().isEmpty());
         QSettings().setValue("general/clearSearchOnShow", false);
+    }
+
+    void excludeAFolderFromTheResults()
+    {
+        m_search->setText("rs");
+        QTRY_COMPARE(status(), QStringLiteral("2 items"));
+        QTest::keyClick(m_search, Qt::Key_Down);
+        QCOMPARE(nameAt(m_view->currentRow()), QStringLiteral("Alpha.rs"));
+
+        // Right-click > Exclude from Results offers the folders it is in, innermost first.
+        QStringList offered;
+        auto *t = new QTimer;
+        QObject::connect(t, &QTimer::timeout, [&, t] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            t->deleteLater();
+            for (QAction *a : menu->actions()) {
+                if (a->text().remove('&') != QLatin1String("Exclude from Results") || !a->menu())
+                    continue;
+                for (QAction *choice : a->menu()->actions())
+                    offered << choice->text().replace(QLatin1String("&&"), QLatin1String("&"));
+                for (QAction *choice : a->menu()->actions())
+                    if (choice->text() == tree() + "/src")
+                        choice->trigger();
+            }
+            menu->close();
+        });
+        t->start(10);
+        emit m_view->contextMenuRequested(m_view->mapToGlobal(QPoint(20, 20)));
+        QVERIFY2(offered.size() >= 3, qPrintable(offered.join(", ")));
+        QCOMPARE(offered[0], tree() + "/src");
+        QCOMPARE(offered[1], tree());
+        QCOMPARE(OptionsDialog::excludedFolders(), QStringList{tree() + "/src"});
+        QTRY_COMPARE(status(), QStringLiteral("0 items  ·  1 folder excluded"));
+
+        // alpha report.pdf and beta.txt, but not Alpha.rs or renamed.rs in src.
+        m_search->setText("a");
+        QTRY_COMPARE(status(), QStringLiteral("2 items  ·  1 folder excluded"));
+
+        OptionsDialog::setExcludedFolders({});
+        MainWindow::applySettingsToAll(false);
+        m_search->setText("rs");
+        QTRY_COMPARE(status(), QStringLiteral("2 items"));
+        m_search->clear();
     }
 
     void survivesADaemonRestart()

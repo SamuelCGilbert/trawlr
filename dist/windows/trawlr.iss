@@ -56,10 +56,13 @@ Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environmen
 
 [Run]
 Filename: "{app}\trawlrd.exe"; Parameters: "--install-service"; Flags: runhidden waituntilterminated; StatusMsg: "Starting the indexing service..."
+; Back in the tray if setup had to close it.
+Filename: "{app}\trawlr-gui.exe"; Parameters: "--background"; Flags: nowait runasoriginaluser; Check: GuiWasRunning
 Filename: "{app}\trawlr-gui.exe"; Description: "Open Trawlr"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\trawlrd.exe"; Parameters: "--uninstall-service"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveService"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM trawlr-gui.exe"; Flags: runhidden waituntilterminated; RunOnceId: "CloseWindows"
 
 [UninstallDelete]
 ; The index, the log and the configuration.
@@ -68,6 +71,14 @@ Type: filesandordirs; Name: "{commonappdata}\Trawlr"
 [Code]
 const
   EnvKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
+var
+  ClosedGui: Boolean;
+
+function GuiWasRunning: Boolean;
+begin
+  Result := ClosedGui;
+end;
 
 function NotInPath(Dir: string): Boolean;
 var
@@ -80,7 +91,8 @@ begin
 end;
 
 // An upgrade replaces trawlrd.exe, which the running service holds open:
-// stop and remove the service first; installing registers it again.
+// stop and remove the service first; installing registers it again. The
+// same goes for the programs' DLLs, which running windows hold open.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
@@ -89,6 +101,10 @@ begin
   Old := ExpandConstant('{app}\trawlrd.exe');
   if FileExists(Old) then
     Exec(Old, '--uninstall-service', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  // A Trawlr window holds its files open too, and it may be another user's,
+  // which closing applications the usual way cannot reach (it only sees the
+  // session setup runs in). taskkill exits with 0 when it ended something.
+  ClosedGui := Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM trawlr-gui.exe', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   Result := '';
 end;
 

@@ -31,6 +31,7 @@ struct QueryParams {
     bool matchPath = false;
     bool regex = false;
     bool wholeWord = false;
+    QStringList exclude; // folders left out of the results, with their contents
 };
 
 class Client : public QObject {

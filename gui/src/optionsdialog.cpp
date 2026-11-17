@@ -9,6 +9,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -36,6 +38,8 @@ static const QString kLastPage = QStringLiteral("options/page");
 static const QString kGeometry = QStringLiteral("options/geometry");
 
 static const char *const kSearchKeys[] = {"search/matchCase", "search/wholeWord", "search/matchPath", "search/regex"};
+static const bool kSearchDefaults[] = {false, false, true, false};
+static const QString kExcluded = QStringLiteral("search/excludedFolders");
 
 // Explanatory text under a control: readable, but quieter than the controls.
 static QLabel *hintLabel(const QString &text, QWidget *parent)
@@ -92,6 +96,19 @@ bool OptionsDialog::pathDoubleClickOpensFolder()
 bool OptionsDialog::autoFitColumns()
 {
     return QSettings().value(QStringLiteral("view/autoFitColumns"), true).toBool();
+}
+
+QStringList OptionsDialog::excludedFolders()
+{
+    return QSettings().value(kExcluded).toStringList();
+}
+
+void OptionsDialog::setExcludedFolders(const QStringList &folders)
+{
+    QStringList sorted = folders;
+    sorted.removeDuplicates();
+    sorted.sort(Qt::CaseInsensitive);
+    QSettings().setValue(kExcluded, sorted);
 }
 
 QString OptionsDialog::theme()
@@ -162,10 +179,12 @@ OptionsDialog::OptionsDialog(const QList<CommandInfo> &commands, QWidget *parent
         if (m_menuBar)
             m_menuBar->setChecked(false);
     });
-    addPage(tr("Search"), tr("match case whole word path regex regular expression home"), buildSearchPage(), [this] {
-        for (QCheckBox *b : {m_matchCase, m_wholeWord, m_matchPath, m_regex})
-            b->setChecked(false);
+    addPage(tr("Search"), tr("match case whole word path regex regular expression home exclude excluded hide hidden ignore folders"), buildSearchPage(), [this] {
+        QCheckBox *boxes[] = {m_matchCase, m_wholeWord, m_matchPath, m_regex};
+        for (int i = 0; i < 4; ++i)
+            boxes[i]->setChecked(kSearchDefaults[i]);
         m_keepSearch->setChecked(true);
+        m_excluded->clear();
     });
     addPage(tr("Terminal"), tr("terminal console shell konsole powershell command prompt cmd run script"), buildTerminalPage(), [this] {
         m_terminal->setCurrentIndex(0);
@@ -448,7 +467,7 @@ QWidget *OptionsDialog::buildSearchPage()
     for (int i = 0; i < 4; ++i) {
         *boxes[i] = new QCheckBox(labels[i], match);
         (*boxes[i])->setObjectName(QLatin1String(names[i]));
-        (*boxes[i])->setChecked(s.value(QLatin1String(kSearchKeys[i]), false).toBool());
+        (*boxes[i])->setChecked(s.value(QLatin1String(kSearchKeys[i]), kSearchDefaults[i]).toBool());
         ml->addWidget(*boxes[i]);
     }
     ml->addWidget(hintLabel(tr("The same switches as the Search menu. Changing them here changes every open window."), match));
@@ -463,7 +482,40 @@ QWidget *OptionsDialog::buildSearchPage()
     fl->addWidget(m_keepSearch);
     fl->addWidget(m_clearSearch);
     layout->addWidget(front);
-    layout->addStretch(1);
+
+    auto *ex = new QGroupBox(tr("Excluded folders"), page);
+    auto *el = new QVBoxLayout(ex);
+    el->addWidget(hintLabel(tr("These folders, and everything in them, are left out of the results. "
+                               "Right-click a result and choose Exclude from Results to add one."), ex));
+    auto *row = new QHBoxLayout;
+    m_excluded = new QListWidget(ex);
+    m_excluded->setObjectName("excludedFolders");
+    m_excluded->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_excluded->setMinimumHeight(110);
+    m_excluded->addItems(excludedFolders());
+    row->addWidget(m_excluded, 1);
+    auto *buttons = new QVBoxLayout;
+    auto *add = new QPushButton(tr("Add…"), ex);
+    auto *remove = new QPushButton(tr("Remove"), ex);
+    add->setAutoDefault(false);
+    remove->setAutoDefault(false);
+    remove->setEnabled(false);
+    buttons->addWidget(add);
+    buttons->addWidget(remove);
+    buttons->addStretch(1);
+    row->addLayout(buttons);
+    el->addLayout(row);
+    layout->addWidget(ex, 1);
+    connect(m_excluded, &QListWidget::itemSelectionChanged, remove, [this, remove] { remove->setEnabled(!m_excluded->selectedItems().isEmpty()); });
+    connect(remove, &QPushButton::clicked, this, [this] { qDeleteAll(m_excluded->selectedItems()); });
+    connect(add, &QPushButton::clicked, this, [this] {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("Exclude Folder"));
+        if (dir.isEmpty())
+            return;
+        const QString native = QDir::toNativeSeparators(dir);
+        if (m_excluded->findItems(native, Qt::MatchFixedString).isEmpty())
+            m_excluded->addItem(native);
+    });
     return page;
 }
 
@@ -1002,6 +1054,10 @@ bool OptionsDialog::apply()
     for (int i = 0; i < 4; ++i)
         s.setValue(QLatin1String(kSearchKeys[i]), boxes[i]->isChecked());
     s.setValue(kClearOnShow, m_clearSearch->isChecked());
+    QStringList excluded;
+    for (int i = 0; i < m_excluded->count(); ++i)
+        excluded << m_excluded->item(i)->text();
+    setExcludedFolders(excluded);
     emit applied();
     return true;
 }

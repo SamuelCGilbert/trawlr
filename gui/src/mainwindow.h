@@ -11,6 +11,7 @@
 class QAction;
 class QActionGroup;
 class QLabel;
+class QMenu;
 class QLineEdit;
 class QHBoxLayout;
 class QToolButton;
@@ -70,7 +71,7 @@ private:
     void applyShortcuts();
     void applySettings(bool searchSwitches);
     QList<CommandInfo> commands() const;
-    void showOptions();
+    void showOptions(const QString &page = QString());
     void runSearch();
     void updateStatusBar();
     void updateIndexPill();
@@ -92,6 +93,7 @@ private:
     void showProperties();
     void startDrag();
     void showContextMenu(const QPoint &globalPos);
+    void addExcludeMenu(QMenu *menu);
     void showSyntaxHelp();
     void showIndexStatus(const QJsonObject &s);
 

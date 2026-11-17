@@ -111,6 +111,15 @@ changed under **Options → General**). Shift+double-click opens it and puts the
 column header to sort; drag results out of the window into other applications. `Ctrl+M` shows the
 menu bar; everything in it is also in the ☰ menu.
 
+*Match path* is on unless you turn it off (`Ctrl+U`): each word may match anywhere in the full path,
+so `photos 2024` finds files in a folder named Photos with 2024 in their name.
+
+To hide a folder you are not interested in, right-click any result in it and choose **Exclude from
+Results**, then the folder (the menu lists every folder the result is in). The folder and everything
+in it is left out of every search, and the status bar says how many folders are excluded. They are
+listed under **Options → Search**, where you can remove them or add more. This only changes your
+results; to stop indexing a folder for everyone, use `exclude` in the configuration (below).
+
 ### One window or many
 
 Starting Trawlr while a window is already open (from the hotkey, the launcher or a terminal)
@@ -135,8 +144,8 @@ match, `Esc` clears the search.
 
 - **General**: allow multiple windows, system tray icon, what double-clicking a path does.
 - **View**: theme (System, Light, Dark), accent colour, row density, menu bar.
-- **Search**: match case, whole word, path and regex for every open window, and whether a window
-  brought to the front keeps its last search or starts empty.
+- **Search**: match case, whole word, path and regex for every open window, whether a window
+  brought to the front keeps its last search or starts empty, and the excluded folders.
 - **Terminal**: which terminal Open/Run in Terminal use. *Automatic* picks your desktop's own
   (Konsole, GNOME Console, Ptyxis, …); any installed terminal or a custom command can be chosen.
 - **Keyboard**: global hotkeys and the shortcuts in the window.

@@ -59,7 +59,7 @@ quint64 Client::sendQuery(const QueryParams &p, qint64 offset, int limit)
     const quint64 qid = m_nextQid++;
     send({{"op", "query"}, {"qid", double(qid)}, {"q", p.text}, {"sort", p.sort}, {"desc", p.desc},
           {"case", p.matchCase}, {"path", p.matchPath}, {"regex", p.regex}, {"word", p.wholeWord},
-          {"offset", double(offset)}, {"limit", limit}});
+          {"exclude", QJsonArray::fromStringList(p.exclude)}, {"offset", double(offset)}, {"limit", limit}});
     return qid;
 }
 

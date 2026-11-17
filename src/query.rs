@@ -204,6 +204,8 @@ enum Leaf {
     Dir,
     EmptyDir,
     Parent(u32),
+    /// Inside (or one of) these folders; see [`Compiled::excluding`].
+    Under { slot: usize, dirs: Vec<u32> },
     All,
 }
 
@@ -273,8 +275,43 @@ fn eval_leaf(l: &Leaf, c: &Ctx, i: u32) -> bool {
         Leaf::Dir => idx.is_dir(i),
         Leaf::EmptyDir => idx.is_dir(i) && !idx.is_dead(i) && idx.children(i).is_empty(),
         Leaf::Parent(p) => idx.parent(i) == *p,
+        Leaf::Under { slot, dirs } => under(idx, dirs, i, c.memo.get(*slot).copied()),
         Leaf::All => true,
     }
+}
+
+/// Whether `x` is one of `dirs` or inside one. The answer for each folder
+/// on the way up is remembered (1 no, 2 yes), so each is looked at once.
+fn under(idx: &Index, dirs: &[u32], x: u32, memo: Option<&[AtomicU8]>) -> bool {
+    let mut chain = [0u32; 64];
+    let mut n = 0;
+    let mut cur = x;
+    let res = loop {
+        if cur == NONE {
+            break false;
+        }
+        if dirs.contains(&cur) {
+            break true;
+        }
+        if let Some(m) = memo {
+            match m[cur as usize].load(Ordering::Relaxed) {
+                1 => break false,
+                2 => break true,
+                _ => {}
+            }
+        }
+        if n < chain.len() {
+            chain[n] = cur;
+            n += 1;
+        }
+        cur = idx.parent(cur);
+    };
+    if let Some(m) = memo {
+        for &c in &chain[..n] {
+            m[c as usize].store(if res { 2 } else { 1 }, Ordering::Relaxed);
+        }
+    }
+    res
 }
 
 // ---- parsing -----------------------------------------------------------
@@ -761,6 +798,21 @@ pub fn compile(text: &str, opts: QueryOpts, idx: &Index) -> Result<Compiled, Str
     Ok(Compiled { root, driver, path_leaves: p.path_leaves, epoch: idx.epoch })
 }
 
+impl Compiled {
+    /// Leave out these folders and everything in them. Folders that do not
+    /// exist (now) are ignored.
+    pub fn excluding(mut self, folders: &[String], idx: &Index) -> Compiled {
+        let dirs: Vec<u32> = folders.iter().filter_map(|f| idx.resolve_path(f.as_bytes())).filter(|&d| idx.is_dir(d)).collect();
+        if !dirs.is_empty() {
+            let slot = self.path_leaves;
+            self.path_leaves += 1;
+            let root = std::mem::replace(&mut self.root, Node::And(Vec::new()));
+            self.root = Node::And(vec![root, Node::Not(Box::new(Node::Leaf(Leaf::Under { slot, dirs })))]);
+        }
+        self
+    }
+}
+
 // ---- execution ---------------------------------------------------------
 
 const CHUNK_WORDS: usize = 512;
@@ -1012,6 +1064,22 @@ mod tests {
         // A regular expression sees the path as the system writes it.
         let re = if cfg!(windows) { r"regex:path:^\\home\\sal\\[^\\]+\.txt$" } else { r"regex:path:^/home/sal/[^/]+\.txt$" };
         assert_eq!(run(&idx, re), ["invoice_draft.txt", "notes.txt"]);
+    }
+
+    #[test]
+    fn excluded_folders() {
+        let idx = sample();
+        let ex = |q: &str, folders: &[&str]| -> Vec<String> {
+            let folders: Vec<String> = folders.iter().map(|f| f.replace('/', std::str::from_utf8(&[SEP]).unwrap())).collect();
+            let c = compile(q, QueryOpts::default(), &idx).unwrap().excluding(&folders, &idx);
+            execute(&idx, &c, Sort::Name).into_iter().map(|i| String::from_utf8_lossy(idx.orig_name(i)).into_owned()).collect()
+        };
+        assert_eq!(ex("o", &[]), run(&idx, "o"));
+        // The folder itself goes too, and folders that are not there are ignored.
+        assert_eq!(ex("project", &["/home/sal/src"]), [] as [&str; 0]);
+        assert_eq!(ex("file:", &["/home/sal/src", "/home/sal/nope"]), run(&idx, "file: !path:src/"));
+        assert_eq!(ex("ma", &["/home/sal/src/project"]), [] as [&str; 0]);
+        assert_eq!(ex("ma", &["/home/sal/downloads"]), ["main.rs", "Makefile"]);
     }
 
     #[test]

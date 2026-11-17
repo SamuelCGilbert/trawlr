@@ -152,7 +152,7 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     QSettings s;
     m_matchCase->setChecked(s.value("search/matchCase", false).toBool());
     m_wholeWord->setChecked(s.value("search/wholeWord", false).toBool());
-    m_matchPath->setChecked(s.value("search/matchPath", false).toBool());
+    m_matchPath->setChecked(s.value("search/matchPath", true).toBool());
     m_regex->setChecked(s.value("search/regex", false).toBool());
     setSort(s.value("view/sort", "name").toString(), s.value("view/descending", false).toBool());
     resize(1100, 700);
@@ -168,8 +168,14 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     m_view->header()->setSectionsClickable(true);
 
     connect(m_search, &QLineEdit::textChanged, this, &MainWindow::runSearch);
-    for (QAction *a : {m_matchCase, m_wholeWord, m_matchPath, m_regex})
+    const QList<QPair<QAction *, QString>> switches = {
+        {m_matchCase, "search/matchCase"}, {m_wholeWord, "search/wholeWord"}, {m_matchPath, "search/matchPath"}, {m_regex, "search/regex"}};
+    for (const auto &[a, key] : switches) {
         connect(a, &QAction::toggled, this, &MainWindow::runSearch);
+        // Saved at once: with the tray, a window may never be closed, and
+        // the next window or start should find the switch as it was left.
+        connect(a, &QAction::toggled, this, [key](bool on) { QSettings().setValue(key, on); });
+    }
 
     connect(m_view, &ResultsView::activated, this, &MainWindow::activate);
     connect(m_view, &ResultsView::selectionChanged, this, &MainWindow::updateStatusBar);
@@ -490,16 +496,19 @@ void MainWindow::applySettings(bool searchSwitches)
         m_autoFitColumns->setChecked(fit);
     if (fit != m_view->autoFitColumns())
         m_view->setAutoFitColumns(fit);
-    if (!searchSwitches)
-        return;
-    QSettings s;
-    m_matchCase->setChecked(s.value("search/matchCase", false).toBool());
-    m_wholeWord->setChecked(s.value("search/wholeWord", false).toBool());
-    m_matchPath->setChecked(s.value("search/matchPath", false).toBool());
-    m_regex->setChecked(s.value("search/regex", false).toBool());
+    if (searchSwitches) {
+        QSettings s;
+        m_matchCase->setChecked(s.value("search/matchCase", false).toBool());
+        m_wholeWord->setChecked(s.value("search/wholeWord", false).toBool());
+        m_matchPath->setChecked(s.value("search/matchPath", true).toBool());
+        m_regex->setChecked(s.value("search/regex", false).toBool());
+    }
+    // A switch that changed has searched again already.
+    if (m_store->params().exclude != OptionsDialog::excludedFolders())
+        runSearch();
 }
 
-void MainWindow::showOptions()
+void MainWindow::showOptions(const QString &page)
 {
     // The Search page shows this window's switches.
     QSettings s;
@@ -509,6 +518,8 @@ void MainWindow::showOptions()
     s.setValue("search/regex", m_regex->isChecked());
 
     OptionsDialog dlg(commands(), this);
+    if (!page.isEmpty())
+        dlg.showPage(page);
     connect(&dlg, &OptionsDialog::applied, this, [] {
         applyTheme(OptionsDialog::theme());
         applySettingsToAll();
@@ -725,6 +736,7 @@ void MainWindow::runSearch()
     p.matchCase = m_matchCase->isChecked();
     p.matchPath = m_matchPath->isChecked();
     p.wholeWord = m_wholeWord->isChecked();
+    p.exclude = OptionsDialog::excludedFolders();
     m_view->setHighlightTerms(highlightTerms(text, m_regex->isChecked()));
     m_store->setQuery(p);
     setWindowTitle(text.trimmed().isEmpty() ? tr("Trawlr") : tr("%1 - Trawlr").arg(text.trimmed()));
@@ -752,6 +764,10 @@ void MainWindow::updateStatusBar()
         text = tr("%1 of %2 selected").arg(loc.toString(selected), loc.toString(total));
     } else {
         text = total == 1 ? tr("1 item") : tr("%1 items").arg(loc.toString(total));
+        // Say so, or the missing results are a mystery later.
+        const qsizetype excluded = m_store->params().exclude.size();
+        if (excluded > 0)
+            text += QStringLiteral("  ·  ") + (excluded == 1 ? tr("1 folder excluded") : tr("%1 folders excluded").arg(excluded));
     }
     m_countLabel->setText(text);
 
@@ -975,7 +991,48 @@ void MainWindow::showContextMenu(const QPoint &globalPos)
                 if (c.id == id)
                     menu.addAction(c.action);
     }
+    addExcludeMenu(&menu);
     menu.exec(globalPos);
+}
+
+// The folders a result is in, innermost first, down to (not including) the
+// top of a drive or "/": the choices for leaving it out of the results.
+static QStringList foldersAround(const Row &r)
+{
+    const QChar sep = Platform::separator();
+    QStringList out;
+    QString d = r.isDir ? r.path() : r.dir;
+    while (!d.isEmpty() && !d.endsWith(sep) && out.size() < 12) {
+        out << d;
+        const QString up = d.left(qMax(0, int(d.lastIndexOf(sep))));
+        if (up.isEmpty() || up.endsWith(QLatin1Char(':')))
+            break;
+        d = up;
+    }
+    return out;
+}
+
+void MainWindow::addExcludeMenu(QMenu *menu)
+{
+    const QList<Row> rows = m_view->loadedSelection(1);
+    const QStringList folders = rows.isEmpty() ? QStringList() : foldersAround(rows.first());
+    const QStringList excluded = OptionsDialog::excludedFolders();
+    if (folders.isEmpty() && excluded.isEmpty())
+        return;
+    menu->addSeparator();
+    QMenu *sub = menu->addMenu(tr("E&xclude from Results"));
+    for (const QString &f : folders) {
+        QString label = f;
+        QAction *a = sub->addAction(label.replace(QLatin1Char('&'), QLatin1String("&&")));
+        connect(a, &QAction::triggered, this, [f] {
+            OptionsDialog::setExcludedFolders(OptionsDialog::excludedFolders() << f);
+            applySettingsToAll(false);
+        });
+    }
+    if (!folders.isEmpty())
+        sub->addSeparator();
+    QAction *manage = sub->addAction(tr("&Manage Excluded Folders…"));
+    connect(manage, &QAction::triggered, this, [this] { showOptions(tr("Search")); });
 }
 
 void MainWindow::showSyntaxHelp()

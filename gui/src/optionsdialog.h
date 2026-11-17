@@ -53,6 +53,9 @@ public:
     static QString theme(); // "system", "light" or "dark"
     // Result columns size themselves to their contents; Name takes the rest.
     static bool autoFitColumns();
+    // Folders left out of every search's results (with what is in them).
+    static QStringList excludedFolders();
+    static void setExcludedFolders(const QStringList &folders);
 
 signals:
     void applied();
@@ -123,6 +126,7 @@ private:
     QCheckBox *m_autoFit = nullptr;
     QCheckBox *m_matchCase = nullptr, *m_wholeWord = nullptr, *m_matchPath = nullptr, *m_regex = nullptr;
     QRadioButton *m_keepSearch = nullptr, *m_clearSearch = nullptr;
+    QListWidget *m_excluded = nullptr;
 
     QKeySequenceEdit *m_global[GlobalHotkey::ActionCount] = {};
     QKeySequence m_globalAtStart[GlobalHotkey::ActionCount];

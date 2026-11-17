@@ -95,6 +95,8 @@ struct Request {
     word: bool,
     offset: u64,
     limit: u64,
+    /// Folders to leave out of the results, with everything in them.
+    exclude: Vec<String>,
     deep: bool,
     rebuild: bool,
 }
@@ -275,7 +277,7 @@ pub fn session(sh: Arc<Shared>, input: impl Read, output: Box<dyn Write + Send>,
                 let t0 = Instant::now();
                 let opts = QueryOpts { case: req.case, path: req.path, regex: req.regex, word: req.word };
                 let idx = sh.index.read();
-                match query::compile(&req.q, opts, &idx) {
+                match query::compile(&req.q, opts, &idx).map(|c| c.excluding(&req.exclude, &idx)) {
                     Err(e) => json!({"qid": req.qid, "error": e}),
                     Ok(compiled) => {
                         let mut ids = query::execute(&idx, &compiled, Sort::parse(&req.sort));
