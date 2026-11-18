@@ -139,9 +139,19 @@ fn bytes_of(p: &Path) -> Vec<u8> {
     crate::util::to_lower(s.as_bytes())
 }
 
+/// Where a per-user daemon puts its socket: the session's own runtime
+/// folder, macOS's per-user temporary folder, or else a folder of our own in
+/// /tmp (which the daemon refuses to use if someone else made it first).
 #[cfg(unix)]
 pub fn user_runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(format!("/tmp/trawlrd-{}", unsafe { libc::getuid() })))
+    if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return PathBuf::from(d);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(d) = std::env::var_os("TMPDIR") {
+        return PathBuf::from(d);
+    }
+    PathBuf::from(format!("/tmp/trawlrd-{}", unsafe { libc::getuid() }))
 }
 
 #[cfg(unix)]

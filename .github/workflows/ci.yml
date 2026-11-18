@@ -29,6 +29,8 @@ jobs:
           QT_QPA_PLATFORM=offscreen ./tst_gui
       - name: Stress test
         run: python3 tests/stress.py --rounds 10
+      - name: Hostile clients
+        run: python3 tests/protocol.py
 
   windows:
     runs-on: windows-2025
@@ -78,6 +80,9 @@ jobs:
         with:
           name: stress-log
           path: /tmp/stress
+      - name: Hostile clients
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 tests/protocol.py
       # Indexes the runner's whole disk as root and checks live updates,
       # restarts and catching up with FSEvents against it.
       - name: Live index test

@@ -13,6 +13,7 @@ pub mod util;
 pub mod config;
 pub mod db;
 pub mod index;
+pub mod peer;
 pub mod query;
 pub mod server;
 

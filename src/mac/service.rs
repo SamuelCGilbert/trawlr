@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -60,7 +60,9 @@ pub fn run(ov: Overrides, as_service: bool) -> i32 {
     }
 
     info!("trawlrd {} starting ({} mode)", env!("CARGO_PKG_VERSION"), if settings.system { "system" } else { "user" });
-    let (tx, rx) = channel::<Msg>();
+    // Bounded: if the indexer falls behind, the change history waits where
+    // it is kept (on disk) instead of piling up in memory here.
+    let (tx, rx) = sync_channel::<Msg>(4096);
     let sh = Arc::new(Shared::new(settings.clone(), tx.clone()));
     let listener = match server::bind(&sh) {
         Ok(l) => l,

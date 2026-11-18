@@ -63,9 +63,17 @@ fn read_pod<T: Pod>(r: &mut impl Read, n: u64) -> io::Result<Vec<T>> {
     if n.checked_mul(std::mem::size_of::<T>()).is_none_or(|b| b > 1 << 40) {
         return Err(bad("length"));
     }
-    let mut v = vec![T::default(); n];
-    let bytes = unsafe { std::slice::from_raw_parts_mut(v.as_mut_ptr() as *mut u8, n * std::mem::size_of::<T>()) };
-    r.read_exact(bytes)?;
+    // Grown as the data arrives, so a damaged header claiming enormous
+    // sizes fails at the end of the file instead of allocating them first.
+    const CHUNK: usize = 1 << 22;
+    let mut v: Vec<T> = Vec::new();
+    while v.len() < n {
+        let take = (n - v.len()).min(CHUNK);
+        let at = v.len();
+        v.resize(at + take, T::default());
+        let bytes = unsafe { std::slice::from_raw_parts_mut(v.as_mut_ptr().add(at) as *mut u8, take * std::mem::size_of::<T>()) };
+        r.read_exact(bytes)?;
+    }
     Ok(v)
 }
 
@@ -129,6 +137,29 @@ pub fn save(path: &Path, idx: &Index, meta: &Meta) -> io::Result<u64> {
     drop(file);
     std::fs::rename(&tmp, path)?;
     Ok(len)
+}
+
+/// Whether following parents from some entry never reaches a root, which
+/// would send every path lookup round in a circle.
+fn has_parent_cycle(parent: &[u32]) -> bool {
+    // 0: not looked at, 1: on the current chain, 2: known to reach a root.
+    let mut state = vec![0u8; parent.len()];
+    let mut chain = Vec::new();
+    for start in 0..parent.len() {
+        let mut e = start as u32;
+        while e != NONE && state[e as usize] == 0 {
+            state[e as usize] = 1;
+            chain.push(e);
+            e = parent[e as usize];
+        }
+        if e != NONE && state[e as usize] == 1 {
+            return true;
+        }
+        for c in chain.drain(..) {
+            state[c as usize] = 2;
+        }
+    }
+    false
 }
 
 pub fn load(path: &Path) -> io::Result<(Index, Meta)> {
@@ -197,11 +228,78 @@ pub fn load(path: &Path) -> io::Result<(Index, Meta)> {
         && idx.perm.iter().all(|&i| (i as usize) < n)
         && idx.sorted_upto as usize <= n
         && idx.roots.iter().all(|&r| (r as usize) < n && idx.parent[r as usize] == NONE);
-    if !ok {
+    if !ok || has_parent_cycle(&idx.parent) {
         return Err(bad("inconsistent contents"));
     }
 
     idx.dirs = (0..nd).map(|s| DirInfo { entry: d_entry[s], fs: d_fs[s], h_len: d_hlen[s], h_off: d_hoff[s], mtime_ns: d_mtime[s], children: Vec::new() }).collect();
     idx.rebuild_derived();
     Ok((idx, Meta { saved_at_ns: h.saved_at_ns, clean: h.clean, boot_id: h.boot_id, fingerprint: h.fingerprint, fs: h.fs }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta() -> Meta {
+        Meta { saved_at_ns: 0, clean: true, boot_id: String::new(), fingerprint: String::new(), fs: Vec::new() }
+    }
+
+    fn header(entries: u64) -> Header {
+        Header {
+            version: VERSION,
+            entries,
+            dirs: 0,
+            lower_len: 0,
+            orig_len: 0,
+            orig_n: 0,
+            handles_len: 0,
+            perm_len: 0,
+            sorted_upto: 0,
+            roots: Vec::new(),
+            saved_at_ns: 0,
+            clean: true,
+            boot_id: String::new(),
+            fingerprint: String::new(),
+            fs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn damaged_files_are_refused() {
+        let dir = std::env::temp_dir().join(format!("trawlr-db-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("index.db");
+
+        let mut idx = Index::new();
+        let r = idx.add_root(b"/", 0, b"");
+        let d = idx.add_dir(r, b"Docs", b"docs", 0, 0, 0, b"h1", true);
+        idx.add_file(d, b"A.txt", b"a.txt", 0, 5, 0, true);
+        save(&p, &idx, &meta()).unwrap();
+        assert_eq!(load(&p).unwrap().0.live_count(), 3);
+
+        std::fs::write(&p, b"EVRYIDX1 not zstd at all").unwrap();
+        assert!(load(&p).is_err());
+
+        // A header claiming far more entries than follow: refused at the end
+        // of the data, without trying to allocate what it claims.
+        let mut f = File::create(&p).unwrap();
+        f.write_all(MAGIC).unwrap();
+        let mut w = zstd::stream::write::Encoder::new(f, 1).unwrap();
+        let h = serde_json::to_vec(&header(1 << 36)).unwrap();
+        w.write_all(&(h.len() as u32).to_le_bytes()).unwrap();
+        w.write_all(&h).unwrap();
+        w.write_all(&[0u8; 64]).unwrap();
+        w.finish().unwrap();
+        assert!(load(&p).is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn parent_cycles_are_found() {
+        assert!(!has_parent_cycle(&[NONE, 0, 1, 1]));
+        assert!(has_parent_cycle(&[NONE, 2, 1]));
+        assert!(has_parent_cycle(&[0]));
+    }
 }

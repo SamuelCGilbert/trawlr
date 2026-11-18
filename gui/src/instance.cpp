@@ -1,4 +1,5 @@
 #include "instance.h"
+#include "peercheck.h"
 
 #include <QDir>
 #include <QJsonDocument>
@@ -44,6 +45,9 @@ Instance::Result Instance::forward(const QString &path, const LaunchRequest &r, 
     sock.connectToServer(path);
     if (!sock.waitForConnected(500))
         return NoInstance; // no socket, or a stale one nobody listens on
+    // Only hand the launch to this user's own Trawlr.
+    if (!PeerCheck::check(sock, PeerCheck::Want::SameUser).isEmpty())
+        return Unresponsive;
 #ifdef Q_OS_WIN
     Platform::allowForeground();
 #endif

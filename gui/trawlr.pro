@@ -13,7 +13,7 @@ SOURCES += src/main.cpp src/client.cpp src/resultstore.cpp src/resultsview.cpp s
 HEADERS += src/client.h src/resultstore.h src/resultsview.h src/mainwindow.h src/rangeset.h \
     src/instance.h src/shortcuts.h src/globalhotkey.h src/optionsdialog.h src/windowactivation.h \
     src/theme.h src/icons.h src/widgets.h \
-    src/terminal.h
+    src/terminal.h src/peercheck.h
 RESOURCES += resources.qrc
 
 # The desktop integration differs per system: KDE over D-Bus on Linux,

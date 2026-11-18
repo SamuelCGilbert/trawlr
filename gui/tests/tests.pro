@@ -12,7 +12,7 @@ SOURCES += tst_gui.cpp ../src/client.cpp ../src/resultstore.cpp ../src/resultsvi
 HEADERS += ../src/client.h ../src/resultstore.h ../src/resultsview.h ../src/mainwindow.h ../src/rangeset.h \
     ../src/instance.h ../src/shortcuts.h ../src/globalhotkey.h ../src/optionsdialog.h ../src/windowactivation.h \
     ../src/theme.h ../src/icons.h ../src/widgets.h \
-    ../src/terminal.h ../src/platform.h
+    ../src/terminal.h ../src/platform.h ../src/peercheck.h
 macx {
     SOURCES += ../src/globalhotkey_mac.cpp
     OBJECTIVE_SOURCES += ../src/windowactivation_mac.mm ../src/platform_mac.mm

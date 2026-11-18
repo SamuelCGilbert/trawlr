@@ -62,12 +62,12 @@ impl Conn {
         Ok(n as usize)
     }
 
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8], timeout: Option<Duration>) -> io::Result<usize> {
         let ev = event()?;
         let mut ov: OVERLAPPED = unsafe { std::mem::zeroed() };
         ov.hEvent = ev.raw();
         let started = unsafe { ReadFile(self.h.raw(), buf.as_mut_ptr(), buf.len().min(1 << 20) as u32, std::ptr::null_mut(), &mut ov) };
-        match self.finish(started, &mut ov, &ev, None) {
+        match self.finish(started, &mut ov, &ev, timeout) {
             Ok(n) => Ok(n),
             // The client hung up: the end of the conversation.
             Err(e) if e.raw_os_error() == Some(109) => Ok(0),
@@ -86,12 +86,21 @@ impl Conn {
     }
 }
 
-struct Reader(Arc<Conn>);
+/// Reads a connection. Until the client has said something it is not known
+/// who it is, so it gets a few seconds to do so rather than holding a thread
+/// for as long as it likes.
+struct Reader {
+    conn: Arc<Conn>,
+    heard: bool,
+}
 struct Writer(Arc<Conn>);
 
 impl Read for Reader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
+        let timeout = if self.heard { None } else { Some(Duration::from_secs(10)) };
+        let n = self.conn.read(buf, timeout)?;
+        self.heard = true;
+        Ok(n)
     }
 }
 
@@ -193,11 +202,11 @@ pub fn serve(sh: Arc<Shared>, mut listener: Listener) {
         let _ = std::thread::Builder::new().name("client".into()).spawn(move || {
             let check_conn = conn.clone();
             let settings = sh.settings.clone();
-            let access = Access::AfterFirstRequest(Box::new(move || match security::client_identity(check_conn.h.raw()) {
+            let access = Access::AfterFirstRequest(Box::new(move || match security::client_identity(&check_conn.h) {
                 Some((user, groups)) => user == me || settings.may_search_sids(&user, &groups),
                 None => false,
             }));
-            server::session(sh, Reader(conn.clone()), Box::new(Writer(conn)), access);
+            server::session(sh, Reader { conn: conn.clone(), heard: false }, Box::new(Writer(conn)), access);
         });
     }
 }

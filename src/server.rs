@@ -14,7 +14,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 #[cfg(unix)]
 use std::time::Duration;
@@ -39,8 +39,39 @@ pub struct SessionShared {
     /// Set once the client has been told its results are out of date, and
     /// cleared by its next query, so a busy disk sends one nudge, not a flood.
     notified: AtomicBool,
+    /// Writing to the client failed (it stopped reading): no more nudges.
+    dead: AtomicBool,
     out: Mutex<Box<dyn Write + Send>>,
 }
+
+/// Connections served at once. Each holds a thread and, while it has a
+/// search open, the search's results; a window or a `trawlr` command is one.
+const MAX_SESSIONS: usize = 64;
+static SESSIONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts a session for as long as it lives.
+struct Slot;
+
+impl Slot {
+    fn take() -> Option<Slot> {
+        let n = SESSIONS.fetch_add(1, Ordering::AcqRel);
+        if n >= MAX_SESSIONS {
+            SESSIONS.fetch_sub(1, Ordering::AcqRel);
+            return None;
+        }
+        Some(Slot)
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        SESSIONS.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// A full rescan or rebuild reads the whole disk: one a minute at most,
+/// whoever asks.
+static LAST_RESCAN: Mutex<Option<Instant>> = Mutex::new(None);
 
 impl SessionShared {
     fn send(&self, value: &serde_json::Value) -> bool {
@@ -60,7 +91,7 @@ pub fn notify_changed(sh: &Shared, touched: &Touched) {
     {
         let idx = sh.index.read();
         for s in sessions {
-            if s.notified.load(Ordering::Relaxed) {
+            if s.notified.load(Ordering::Relaxed) || s.dead.load(Ordering::Relaxed) {
                 continue;
             }
             let Some(q) = s.query.lock().clone() else { continue };
@@ -69,12 +100,27 @@ pub fn notify_changed(sh: &Shared, touched: &Touched) {
             }
         }
     }
-    // Written outside the index lock: a client that is slow to read must not
-    // hold up searches.
+    // Written by a thread of their own, not this one (the indexer): a
+    // client that stops reading must hold up neither searches nor indexing.
     for s in hit {
         s.notified.store(true, Ordering::Relaxed);
-        s.send(&json!({"event": "changed"}));
+        let _ = notifier().send(s);
     }
+}
+
+fn notifier() -> &'static std::sync::mpsc::Sender<Arc<SessionShared>> {
+    static TX: std::sync::OnceLock<std::sync::mpsc::Sender<Arc<SessionShared>>> = std::sync::OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Arc<SessionShared>>();
+        let _ = std::thread::Builder::new().name("notifier".into()).spawn(move || {
+            for s in rx {
+                if !s.dead.load(Ordering::Relaxed) && !s.send(&json!({"event": "changed"})) {
+                    s.dead.store(true, Ordering::Relaxed);
+                }
+            }
+        });
+        tx
+    })
 }
 
 pub fn notify_all(sh: &Shared) {
@@ -207,24 +253,9 @@ const DENIED: &str = if cfg!(windows) {
     "this user is not allowed to search the system index (see allowed_users and allowed_groups in /etc/trawlrd/config.toml)"
 };
 
-#[cfg(target_os = "macos")]
-fn peer_uid(stream: &UnixStream) -> Option<u32> {
-    let (mut uid, mut gid) = (0, 0);
-    let r = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) };
-    (r == 0).then_some(uid)
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn peer_uid(stream: &UnixStream) -> Option<u32> {
-    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    let r = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, &mut cred as *mut _ as *mut libc::c_void, &mut len) };
-    (r == 0).then_some(cred.uid)
-}
-
 #[cfg(unix)]
 fn handle(sh: Arc<Shared>, stream: UnixStream) {
-    let uid = peer_uid(&stream);
+    let uid = crate::peer::peer_uid(stream.as_raw_fd());
     let me = unsafe { libc::geteuid() };
     let allowed = match uid {
         Some(u) => u == me || sh.settings.may_search(u),
@@ -237,7 +268,11 @@ fn handle(sh: Arc<Shared>, stream: UnixStream) {
 
 /// Serve one client until it disconnects.
 pub fn session(sh: Arc<Shared>, input: impl Read, output: Box<dyn Write + Send>, access: Access) {
-    let session = Arc::new(SessionShared { query: Mutex::new(None), notified: AtomicBool::new(false), out: Mutex::new(output) });
+    let session = Arc::new(SessionShared { query: Mutex::new(None), notified: AtomicBool::new(false), dead: AtomicBool::new(false), out: Mutex::new(output) });
+    let Some(_slot) = Slot::take() else {
+        session.send(&json!({"ok": false, "error": "trawlrd is serving too many connections; try again"}));
+        return;
+    };
     let mut late_check = match access {
         Access::Known(false) => {
             session.send(&json!({"ok": false, "error": DENIED}));
@@ -324,8 +359,14 @@ pub fn session(sh: Arc<Shared>, input: impl Read, output: Box<dyn Write + Send>,
                 }
             }
             "rescan" => {
-                let _ = sh.tx.send(Msg::Rescan { deep: req.deep, rebuild: req.rebuild });
-                json!({"ok": true})
+                let mut last = LAST_RESCAN.lock();
+                if last.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(60)) {
+                    json!({"ok": false, "error": "a rescan was started less than a minute ago"})
+                } else {
+                    *last = Some(Instant::now());
+                    let _ = sh.tx.send(Msg::Rescan { deep: req.deep, rebuild: req.rebuild });
+                    json!({"ok": true})
+                }
             }
             other => json!({"ok": false, "error": format!("unknown op {other:?}")}),
         };
@@ -342,7 +383,14 @@ pub fn bind(sh: &Shared) -> std::io::Result<UnixListener> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
         if !sh.settings.system {
-            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+            // In a shared place such as /tmp, the folder may have been made
+            // by someone else, who could then swap our socket for theirs.
+            use std::os::unix::fs::MetadataExt;
+            let m = std::fs::symlink_metadata(dir)?;
+            if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } {
+                return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("{} belongs to another user", dir.display())));
+            }
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
         }
     }
     // A leftover socket file from a previous run is fine to replace, but not

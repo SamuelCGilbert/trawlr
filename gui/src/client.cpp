@@ -1,4 +1,5 @@
 #include "client.h"
+#include "peercheck.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -7,6 +8,15 @@ Client::Client(QObject *parent) : QObject(parent)
 {
     connect(&m_socket, &QLocalSocket::readyRead, this, &Client::onReadyRead);
     connect(&m_socket, &QLocalSocket::connected, this, [this] {
+        // Unless told which socket to use, only believe the real daemon.
+        if (qEnvironmentVariableIsEmpty("TRAWLRD_SOCKET")) {
+            const QString why = PeerCheck::check(m_socket, PeerCheck::Want::Daemon);
+            if (!why.isEmpty()) {
+                m_socket.abort(); // reports "disconnected", which retries later
+                emit refused(why);
+                return;
+            }
+        }
         m_retry.stop();
         m_buffer.clear();
         emit connectedChanged(true);

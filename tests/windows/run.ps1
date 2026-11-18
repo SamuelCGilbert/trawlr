@@ -8,6 +8,9 @@ $work = Join-Path $env:TEMP "trawlr-test-$PID"
 New-Item -ItemType Directory -Force $work | Out-Null
 $cfg = Join-Path $work 'config.toml'
 Set-Content $cfg ''
+# This daemon runs in our session, not as the service: name its pipe, which
+# tells trawlr to talk to it anyway.
+$env:TRAWLRD_SOCKET = '\\.\pipe\trawlrd'
 $d = Start-Process "$Bin\trawlrd.exe" -ArgumentList '--root', 'C:', '--db', "$work\index.db", '--config', $cfg -PassThru -NoNewWindow -RedirectStandardError "$work\trawlrd.log"
 $code = 1
 try {

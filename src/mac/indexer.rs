@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,7 @@ pub struct Shared {
     pub index: RwLock<Index>,
     pub state: AtomicU8,
     pub sessions: Mutex<Vec<Arc<SessionShared>>>,
-    pub tx: Sender<Msg>,
+    pub tx: SyncSender<Msg>,
     pub started: Instant,
     pub events: AtomicU64,
     pub cancel: AtomicBool,
@@ -57,7 +57,7 @@ pub struct Shared {
 }
 
 impl Shared {
-    pub fn new(settings: Arc<Settings>, tx: Sender<Msg>) -> Shared {
+    pub fn new(settings: Arc<Settings>, tx: SyncSender<Msg>) -> Shared {
         Shared {
             settings,
             index: RwLock::new(Index::new()),

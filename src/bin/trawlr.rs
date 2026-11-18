@@ -74,6 +74,13 @@ impl Client {
             .write(true)
             .open(&path)
             .map_err(|e| format!("cannot reach trawlrd at {}: {e}\nIs the Trawlr service running?  sc query trawlrd", path.display()))?;
+        // Unless told which socket to use, only believe the real daemon.
+        if std::env::var_os("TRAWLRD_SOCKET").is_none() {
+            #[cfg(unix)]
+            trawlr::peer::check_daemon(std::os::fd::AsRawFd::as_raw_fd(&s))?;
+            #[cfg(windows)]
+            trawlr::peer::check_daemon(&s)?;
+        }
         Ok(Client { reader: BufReader::new(s.try_clone().map_err(|e| e.to_string())?), writer: s })
     }
 

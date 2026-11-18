@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::os::fd::{AsRawFd, OwnedFd};
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,6 +34,16 @@ pub const ST_STARTING: u8 = 0;
 pub const ST_SCANNING: u8 = 1;
 pub const ST_RECONCILING: u8 = 2;
 pub const ST_READY: u8 = 3;
+
+/// Change events read from the kernel but not yet applied. The kernel queue
+/// is unlimited, so if the indexer falls behind (a disk being rewritten while
+/// searches keep it busy) this is where they would pile up without end.
+/// Beyond a limit they are dropped and the index is checked against the
+/// disk instead, as when the kernel's own queue overflows.
+static BACKLOG: AtomicUsize = AtomicUsize::new(0);
+const MAX_BACKLOG: usize = 100_000;
+/// An Overflow is queued and not yet being handled.
+static OVERFLOW_QUEUED: AtomicBool = AtomicBool::new(false);
 
 pub enum Msg {
     Changes(Vec<Change>),
@@ -554,12 +564,18 @@ impl Indexer {
             return;
         }
         let stats: Vec<(usize, &DirFd, sys::Stat)> = fds.iter().filter_map(|(&s, d)| sys::fstat(d.fd.as_raw_fd()).ok().map(|st| (s, d, st))).collect();
+        // With events lost and the check against the disk still to come, a
+        // folder's time now also covers changes nobody applied: recording it
+        // as in sync would make that check pass over the folder.
+        let lost = OVERFLOW_QUEUED.load(Ordering::SeqCst);
         let mut idx = self.sh.index.write();
         for (slot, d, st) in stats {
             if slot >= idx.dir_slots() || idx.dir(slot).entry == NONE || idx.dir_handle(slot) != &d.handle[..] {
                 continue;
             }
-            idx.set_dir_mtime_ns(slot, st.mtime_ns());
+            if !lost {
+                idx.set_dir_mtime_ns(slot, st.mtime_ns());
+            }
             let entry = idx.dir(slot).entry;
             if idx.set_meta(entry, 0, clamp_mtime(st.mtime_s)) {
                 touched.push(entry);
@@ -707,6 +723,8 @@ impl Indexer {
     }
 
     fn process_changes(&mut self, batch: Vec<Change>) {
+        // Every batch was counted on its way in.
+        BACKLOG.fetch_sub(batch.len(), Ordering::Relaxed);
         let sh = self.sh.clone();
         let mut fds: HashMap<usize, DirFd> = HashMap::new();
         let mut touched = Touched::default();
@@ -846,6 +864,9 @@ impl Indexer {
         match msg {
             Msg::Changes(v) => self.process_changes(v),
             Msg::Overflow => {
+                // Cleared before the disk is read: events dropped from now on
+                // need another check, and will queue another Overflow.
+                OVERFLOW_QUEUED.store(false, Ordering::SeqCst);
                 warn!("change queue overflowed; checking the index against the disk");
                 self.reconcile(false, i64::MAX);
             }
@@ -923,11 +944,18 @@ pub fn spawn_watch_reader(w: Arc<Watcher>, tx: Sender<Msg>) {
             let mut overflow = false;
             match w.read(&mut buf, &mut out, &mut overflow) {
                 Ok(true) => {
-                    if overflow && tx.send(Msg::Overflow).is_err() {
+                    if !out.is_empty() && BACKLOG.load(Ordering::Relaxed) + out.len() > MAX_BACKLOG {
+                        out.clear();
+                        overflow = true;
+                    }
+                    if overflow && !OVERFLOW_QUEUED.swap(true, Ordering::SeqCst) && tx.send(Msg::Overflow).is_err() {
                         break;
                     }
-                    if !out.is_empty() && tx.send(Msg::Changes(out)).is_err() {
-                        break;
+                    if !out.is_empty() {
+                        BACKLOG.fetch_add(out.len(), Ordering::Relaxed);
+                        if tx.send(Msg::Changes(out)).is_err() {
+                            break;
+                        }
                     }
                 }
                 Ok(false) => break,

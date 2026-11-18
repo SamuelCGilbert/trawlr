@@ -1,7 +1,7 @@
 //! trawlrd as a Windows service, and in a console for testing.
 
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,9 @@ fn stop_channel() -> Receiver<()> {
 
 /// Run the daemon until asked to stop.
 pub fn run_daemon(settings: Arc<Settings>, stop: Receiver<()>) -> Result<(), String> {
-    let (tx, rx) = channel::<Msg>();
+    // Bounded: if the indexer falls behind, the change history waits where
+    // it is kept (on disk) instead of piling up in memory here.
+    let (tx, rx) = sync_channel::<Msg>(256);
     let sh = Arc::new(Shared::new(settings, tx.clone()));
     let listener = pipe::bind().map_err(|e| e.to_string())?;
     let indexer_thread = {

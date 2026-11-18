@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -53,7 +53,7 @@ pub struct Shared {
     pub index: RwLock<Index>,
     pub state: AtomicU8,
     pub sessions: Mutex<Vec<Arc<SessionShared>>>,
-    pub tx: Sender<Msg>,
+    pub tx: SyncSender<Msg>,
     pub started: Instant,
     pub events: AtomicU64,
     pub cancel: AtomicBool,
@@ -62,7 +62,7 @@ pub struct Shared {
 }
 
 impl Shared {
-    pub fn new(settings: Arc<Settings>, tx: Sender<Msg>) -> Shared {
+    pub fn new(settings: Arc<Settings>, tx: SyncSender<Msg>) -> Shared {
         Shared {
             settings,
             index: RwLock::new(Index::new()),
@@ -132,7 +132,7 @@ impl Vol {
 
 /// Read a drive's journal on a thread of its own, from `start` on, and
 /// send what it finds to the indexer.
-fn spawn_reader(tx: Sender<Msg>, vol: u16, gen: u64, letter: u8, journal: u64, start: i64) -> Reader {
+fn spawn_reader(tx: SyncSender<Msg>, vol: u16, gen: u64, letter: u8, journal: u64, start: i64) -> Reader {
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let _ = std::thread::Builder::new().name(format!("journal-{}", letter as char)).spawn(move || {

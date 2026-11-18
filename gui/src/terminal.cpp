@@ -276,11 +276,17 @@ Plan plan(const QString &keyIn, const QString &custom, const QString &dir, const
     const bool running = !runArgv.isEmpty();
 #ifdef Q_OS_WIN
     const QString ps = installed(QStringLiteral("pwsh")) ? QStringLiteral("pwsh.exe") : QStringLiteral("powershell.exe");
-    // PowerShell's own quoting: inside '...' a ' is written twice.
+    // PowerShell's own quoting: inside '...' a quote is written twice. It
+    // takes the typographic single quotes for quotes too, so a name with one
+    // in it must not end the string early and run the rest as commands.
     QString psRun;
     if (running) {
-        QString f = runArgv.first();
-        f.replace(QLatin1Char('\''), QStringLiteral("''"));
+        QString f;
+        for (const QChar ch : runArgv.first()) {
+            f += ch;
+            if (ch == QLatin1Char('\'') || ch == QChar(0x2018) || ch == QChar(0x2019) || ch == QChar(0x201A) || ch == QChar(0x201B))
+                f += ch;
+        }
         psRun = QStringLiteral("& '") + f + QLatin1Char('\'');
     }
     if (key == QLatin1String("cmd")) {

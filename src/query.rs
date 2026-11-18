@@ -286,7 +286,7 @@ fn eval_leaf(l: &Leaf, c: &Ctx, i: u32) -> bool {
     }
 }
 
-/// Whether `x` is one of `dirs` or inside one. The answer for each folder
+/// Whether `x` is one of `dirs` (sorted) or inside one. The answer for each folder
 /// on the way up is remembered (1 no, 2 yes), so each is looked at once.
 fn under(idx: &Index, dirs: &[u32], x: u32, memo: Option<&[AtomicU8]>) -> bool {
     let mut chain = [0u32; 64];
@@ -296,7 +296,7 @@ fn under(idx: &Index, dirs: &[u32], x: u32, memo: Option<&[AtomicU8]>) -> bool {
         if cur == NONE {
             break false;
         }
-        if dirs.contains(&cur) {
+        if dirs.binary_search(&cur).is_ok() {
             break true;
         }
         if let Some(m) = memo {
@@ -403,7 +403,25 @@ struct Parser<'a> {
     opts: QueryOpts,
     idx: &'a Index,
     path_leaves: usize,
+    depth: usize,
+    terms: usize,
+    patterns: usize,
 }
+
+// What one search may ask for. A search comes from any user allowed to
+// search, and the daemon runs as root: without limits a single request could
+// recurse until the stack overflows, or allocate a byte per indexed entry for
+// each of thousands of path terms.
+const MAX_TOKENS: usize = 4096;
+const MAX_DEPTH: usize = 64;
+const MAX_TERMS: usize = 512;
+/// Each costs one byte per indexed entry while the search runs.
+const MAX_PATH_TERMS: usize = 32;
+/// Regular expressions and wildcards; each may compile to REGEX_SIZE bytes.
+const MAX_PATTERNS: usize = 64;
+const REGEX_SIZE: usize = 2 << 20;
+/// Folders a client may exclude in one search.
+pub const MAX_EXCLUDED: usize = 1024;
 
 const AUDIO: &str = "aac;ac3;aif;aifc;aiff;au;cda;dts;fla;flac;it;m1a;m2a;m3u;m4a;mid;midi;mka;mod;mp2;mp3;mpa;ogg;opus;ra;rmi;spc;snd;umx;voc;wav;wma;xm";
 const ZIP: &str = "7z;ace;arj;bz2;cab;gz;gzip;jar;rar;tar;tgz;z;zip;xz;zst;lz4;tbz2;txz";
@@ -434,7 +452,7 @@ fn wildcard_regex(pat: &str) -> String {
 }
 
 fn build_regex(pat: &str, insensitive: bool) -> Result<Regex, String> {
-    RegexBuilder::new(pat).case_insensitive(insensitive).size_limit(8 << 20).build().map_err(|e| {
+    RegexBuilder::new(pat).case_insensitive(insensitive).size_limit(REGEX_SIZE).dfa_size_limit(REGEX_SIZE).build().map_err(|e| {
         let msg = e.to_string();
         format!("regex: {}", msg.lines().last().unwrap_or("invalid pattern").trim())
     })
@@ -484,11 +502,17 @@ impl Parser<'_> {
                 if matches!(self.peek(), None | Some(Tok::Close) | Some(Tok::Or)) {
                     return Ok(Node::Leaf(Leaf::All));
                 }
-                Ok(Node::Not(Box::new(self.parse_unary()?)))
+                self.enter()?;
+                let n = self.parse_unary();
+                self.depth -= 1;
+                Ok(Node::Not(Box::new(n?)))
             }
             Tok::Open => {
                 self.pos += 1;
-                let n = self.parse_and()?;
+                self.enter()?;
+                let n = self.parse_and();
+                self.depth -= 1;
+                let n = n?;
                 if matches!(self.peek(), Some(Tok::Close)) {
                     self.pos += 1;
                 }
@@ -503,7 +527,26 @@ impl Parser<'_> {
         }
     }
 
+    fn enter(&mut self) -> Result<(), String> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            self.depth -= 1;
+            return Err(format!("the search nests groups or ! more than {MAX_DEPTH} deep"));
+        }
+        Ok(())
+    }
+
     fn term(&mut self, text: &str, quoted_from: usize) -> Result<Node, String> {
+        self.terms += 1;
+        if self.terms > MAX_TERMS {
+            return Err(format!("the search has more than {MAX_TERMS} terms"));
+        }
+        if text.contains(['*', '?']) || self.opts.regex || text.to_ascii_lowercase().contains("regex:") {
+            self.patterns += 1;
+            if self.patterns > MAX_PATTERNS {
+                return Err(format!("the search has more than {MAX_PATTERNS} wildcard or regex terms"));
+            }
+        }
         let mut c = TermCtx { case: self.opts.case, path: self.opts.path, regex: self.opts.regex, word: self.opts.word, whole: false, start: false, end: false };
         let mut filters: Vec<Node> = Vec::new();
         let mut rest = text;
@@ -598,6 +641,9 @@ impl Parser<'_> {
             });
         }
         if path_mode {
+            if self.path_leaves >= MAX_PATH_TERMS {
+                return Err(format!("the search has more than {MAX_PATH_TERMS} path terms"));
+            }
             let slot = self.path_leaves;
             self.path_leaves += 1;
             let text = if c.case { t.as_bytes().to_vec() } else { to_lower(t.as_bytes()) };
@@ -796,7 +842,10 @@ fn pick_driver(node: &Node) -> Option<Vec<u8>> {
 pub fn compile(text: &str, opts: QueryOpts, idx: &Index) -> Result<Compiled, String> {
     // With the regex option on, the whole search box is one pattern.
     let toks = if opts.regex && !text.trim().is_empty() { vec![Tok::Term { text: text.to_string(), quoted_from: 0 }] } else { lex(text) };
-    let mut p = Parser { toks, pos: 0, opts, idx, path_leaves: 0 };
+    if toks.len() > MAX_TOKENS {
+        return Err("the search is too long".into());
+    }
+    let mut p = Parser { toks, pos: 0, opts, idx, path_leaves: 0, depth: 0, terms: 0, patterns: 0 };
     let mut root = p.parse_and()?;
     // Stray closers: keep going so `a > b` still searches for both.
     while p.pos < p.toks.len() {
@@ -812,7 +861,9 @@ impl Compiled {
     /// Leave out these folders and everything in them. Folders that do not
     /// exist (now) are ignored.
     pub fn excluding(mut self, folders: &[String], idx: &Index) -> Compiled {
-        let dirs: Vec<u32> = folders.iter().filter_map(|f| idx.resolve_path(f.as_bytes())).filter(|&d| idx.is_dir(d)).collect();
+        let mut dirs: Vec<u32> = folders.iter().take(MAX_EXCLUDED).filter_map(|f| idx.resolve_path(f.as_bytes())).filter(|&d| idx.is_dir(d)).collect();
+        dirs.sort_unstable();
+        dirs.dedup();
         if !dirs.is_empty() {
             let slot = self.path_leaves;
             self.path_leaves += 1;
@@ -1074,6 +1125,27 @@ mod tests {
         // A regular expression sees the path as the system writes it.
         let re = if cfg!(windows) { r"regex:path:^\\home\\sal\\[^\\]+\.txt$" } else { r"regex:path:^/home/sal/[^/]+\.txt$" };
         assert_eq!(run(&idx, re), ["invoice_draft.txt", "notes.txt"]);
+    }
+
+    #[test]
+    fn hostile_searches_are_refused_not_fatal() {
+        let idx = sample();
+        // Deep nesting would overflow the stack of the daemon's thread.
+        assert!(compile(&"!".repeat(500_000), QueryOpts::default(), &idx).is_err());
+        assert!(compile(&format!("{}a", "<".repeat(200_000)), QueryOpts::default(), &idx).is_err());
+        assert!(compile(&format!("{}a", "!".repeat(MAX_DEPTH - 1)), QueryOpts::default(), &idx).is_ok());
+        // Each path term costs a byte per entry while the search runs.
+        let paths: Vec<String> = (0..MAX_PATH_TERMS + 1).map(|i| format!("d{i}/")).collect();
+        assert!(compile(&paths.join(" "), QueryOpts::default(), &idx).is_err());
+        assert!(compile(&paths[..MAX_PATH_TERMS].join(" "), QueryOpts::default(), &idx).is_ok());
+        let globs: Vec<String> = (0..MAX_PATTERNS + 1).map(|i| format!("*{i}*x")).collect();
+        assert!(compile(&globs.join("|"), QueryOpts::default(), &idx).is_err());
+        assert!(compile(&"a ".repeat(MAX_TERMS + 1), QueryOpts::default(), &idx).is_err());
+        assert!(compile(&"| ".repeat(MAX_TOKENS + 1), QueryOpts::default(), &idx).is_err());
+        // A pattern that would compile to something enormous.
+        assert!(compile("regex:(a{1000}){1000}", QueryOpts::default(), &idx).is_err());
+        // Ordinary searches are unaffected.
+        assert!(compile("<jpg|png> !tmp holiday ext:jpg;png dm:thisyear", QueryOpts::default(), &idx).is_ok());
     }
 
     #[test]

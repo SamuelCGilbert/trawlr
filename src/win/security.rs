@@ -153,8 +153,8 @@ pub fn own_sid() -> Option<Vec<u8>> {
 /// token holds only for denying access count too: they are how Windows
 /// marks an administrator's groups while the user has not elevated, and
 /// such a user may still search.
-pub fn client_identity(pipe: HANDLE) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
-    if unsafe { ImpersonateNamedPipeClient(pipe) } == 0 {
+pub fn client_identity(pipe: &Handle) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
+    if unsafe { ImpersonateNamedPipeClient(pipe.raw()) } == 0 {
         return None;
     }
     let mut token: HANDLE = std::ptr::null_mut();

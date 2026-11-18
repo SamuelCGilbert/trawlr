@@ -34,7 +34,15 @@ pub fn log_to_file(path: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     let _ = std::fs::rename(path, path.with_extension("log.old"));
-    let f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    // Root writes this file: never through a link someone left in its place.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(libc::O_NOFOLLOW).mode(0o644);
+    }
+    let f = opts.open(path)?;
     let _ = LOG_FILE.set(parking_lot::Mutex::new(f));
     Ok(())
 }

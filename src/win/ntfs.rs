@@ -500,9 +500,10 @@ impl Ntfs {
             }
             let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 8) };
             let mut off = 0usize;
-            loop {
-                let Some(e) = bytes.get(off..off + name_at) else { break };
-                let info = unsafe { &*(e.as_ptr() as *const FILE_ID_BOTH_DIR_INFO) };
+            while let Some(e) = bytes.get(off..off + name_at) {
+                // Copied out rather than referenced in place: nothing but the
+                // documentation promises the entries are aligned.
+                let info: FILE_ID_BOTH_DIR_INFO = unsafe { std::ptr::read_unaligned(e.as_ptr() as *const FILE_ID_BOTH_DIR_INFO) };
                 let nlen = info.FileNameLength as usize;
                 if let Some(raw) = bytes.get(off + name_at..off + name_at + nlen) {
                     let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
