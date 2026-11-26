@@ -77,19 +77,22 @@ done
 step recording
 # At 2x and scaled down: at 1x the icon theme picks its small monochrome icons.
 gui dark 2
-ffmpeg -loglevel error -y -f x11grab -draw_mouse 0 -framerate 25 -video_size $((W * 2))x$((H * 2)) -i :1+0,0 -t 15 /tmp/demo.mkv &
+ffmpeg -loglevel error -y -f x11grab -draw_mouse 0 -framerate 25 -video_size $((W * 2))x$((H * 2)) -i :1+0,0 -t 30 /tmp/demo.mkv &
 REC=$!
-sleep 1.2
-xdotool type --delay 150 "invoice"
-sleep 1.8
-# A new invoice arrives while the search is open.
-runuser -u alex -- sh -c 'f="/home/alex/Downloads/invoice-2026-1252 Bluebird Studio.pdf"; head -c 81234 /dev/zero >"$f"'
-sleep 2.5
-xdotool type --delay 150 " 2025"
-sleep 2.5
+# Narrow down step by step, the way people search.
+t() { xdotool type --delay 70 "$1"; sleep "$2"; }
+sleep 0.8
+t "invoice" 1.4
+t " documents/" 1.4
+t " .pdf" 1.4
+t " kestrel" 1.4
+# An invoice moved out of Downloads shows up while the search is open.
+runuser -u alex -- mv "/home/alex/Downloads/invoice-2026-1251 Kestrel Labs.pdf" /home/alex/Documents/Work/Invoices/2026/
+sleep 2.2
 xdotool key ctrl+a BackSpace
-xdotool type --delay 100 ".flac"
-wait $REC
+t ".flac" 1.6
+kill -TERM $REC   # ffmpeg finishes the file; sh ignores SIGINT in background jobs
+wait $REC || true
 quit
 ffmpeg -loglevel error -y -i /tmp/demo.mkv -vf "fps=12,scale=${W}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" "$OUT/demo.gif"
 ls -l "$OUT"

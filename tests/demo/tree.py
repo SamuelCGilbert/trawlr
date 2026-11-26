@@ -59,6 +59,9 @@ def main(home):
     put(d("Documents", "Apartment", "lease-2025.pdf"), kb(300, 600), 400)
     put(d("Documents", "Apartment", "renters-insurance.pdf"), kb(100, 300), 380)
     put(d("Documents", "Car", "service-invoice-2025-09.pdf"), kb(60, 120), 430)
+    put(d("Documents", "Templates", "invoice-template.docx"), kb(20, 40), 500)
+    put(d("Documents", "Templates", "invoice-template.odt"), kb(15, 30), 480)
+    put(d("Documents", "Work", "Invoices", "invoice-tracker.xlsx"), kb(40, 80), 11)
 
     # Photos.
     n = 1000
@@ -96,7 +99,9 @@ def main(home):
                             ("boarding-pass-YUL-LIS.pdf", kb(90, 140), 6), ("debian-13.2.0-amd64-netinst.iso", mb(650, 700), 20),
                             ("node-v24.11.1-linux-x64.tar.xz", mb(28, 30), 33), ("fonts.zip", mb(4, 6), 70),
                             ("IMG_3391 (1).jpg", mb(2, 4), 8), ("bank-statement-2026-10.pdf", kb(100, 200), 24),
-                            ("Screenshot from 2026-11-02.png", kb(200, 600), 23), ("setup-notes.txt", kb(1, 3), 50)]:
+                            ("Screenshot from 2026-11-02.png", kb(200, 600), 23), ("setup-notes.txt", kb(1, 3), 50),
+                            ("Invoice_88213 Hydro.pdf", kb(50, 90), 12), ("invoice-scan.jpg", mb(1, 3), 45),
+                            ("invoice template (1).docx", kb(20, 40), 160)]:
         put(d("Downloads", name), size, age)
 
     # Code, with the usual heaps of dependencies.
@@ -117,6 +122,9 @@ def main(home):
             put(os.path.join(root, "package.json"), kb(1, 3), age)
             for s in rng.sample(stems, 10):
                 put(os.path.join(root, "src", f"{s}.ts"), kb(1, 20), age + rng.randrange(0, 60))
+            if p == "website":
+                for s in ["InvoiceList.tsx", "InvoiceRow.tsx", "invoice.css"]:
+                    put(os.path.join(root, "src", "components", s), kb(1, 9), age + rng.randrange(0, 30))
             for pk in pkgs:
                 for i in range(rng.randrange(60, 400)):
                     sub = rng.choice(["", "lib", "dist", "esm", "cjs", "src"])
@@ -130,14 +138,22 @@ def main(home):
                 put(os.path.join(root, "target", "debug", "deps", f"{rng.choice(stems)}-{rng.getrandbits(64):016x}.d"), kb(0.5, 5), age)
         elif kind == "py":
             put(os.path.join(root, "pyproject.toml"), kb(0.5, 2), age)
-            for s in ["bot", "budget", "categories", "import_bank", "report"]:
+            for s in ["bot", "budget", "categories", "import_bank", "invoices", "report"]:
                 put(os.path.join(root, "budget_bot", f"{s}.py"), kb(1, 12), age + rng.randrange(0, 60))
+            put(os.path.join(root, "tests", "test_invoices.py"), kb(1, 8), age)
+            put(os.path.join(root, "tests", "fixtures", "invoice-sample.pdf"), kb(30, 60), age + 20)
             for i in range(2500):
                 put(os.path.join(root, ".venv", "lib", "python3.13", "site-packages", rng.choice(pkgs).replace("@", "").replace("/", "_"),
                                  f"{rng.choice(stems)}{i}.py"), kb(0.5, 30), age + 30)
         else:
             for f in [".bashrc", ".vimrc", ".gitconfig", "kitty.conf", "starship.toml", "install.sh"]:
                 put(os.path.join(root, f), kb(0.5, 8), age)
+
+    # Things that mention invoices but are not the invoices themselves.
+    put(d("Desktop", "invoice-2026-1250 Harbor & Pine (draft).docx"), kb(20, 40), 4)
+    put(d("Desktop", "todo.txt"), kb(1, 2), 2)
+    put(d("Pictures", "Scans", "plumber-invoice-2025.jpg"), mb(1, 3), 300)
+    put(d("Pictures", "Scans", "moving-company-invoice.jpg"), mb(1, 3), 410)
 
     # The usual hidden clutter.
     for i in range(6000):

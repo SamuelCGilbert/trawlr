@@ -13,7 +13,7 @@ Not affiliated with voidtools.
 
 **[trawlr.io](https://trawlr.io)** · **[Download](../../releases/latest)** · [Install](#install) · [Search syntax](#search-syntax)
 
-<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists 78 matches in 2 ms. A new invoice saved to Downloads appears at the top while the search is open. Typing “.flac” then lists the music."></p>
+<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists every matching file. Adding “documents/”, then “.pdf”, then “kestrel” narrows it step by step from 93 matches to one client’s 11 invoices, each in about 2 ms. An invoice moved in from Downloads appears at the top while the search is open. Then “.flac” lists the music."></p>
 
 ## How it works
 
@@ -132,7 +132,7 @@ Plasma), or bind a key to the command `trawlr` in your desktop's keyboard settin
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot-light.png" width="880" alt="The Trawlr window: a search for “invoice” with its matches listed by name, folder, size and date, newest first, and 78 items found in 2 ms.">
+  <img src="docs/screenshot-light.png" width="880" alt="The Trawlr window: a search for “invoice” with its matches listed by name, folder, size and date, newest first, and 93 items found in 2 ms.">
 </picture>
 
 | Key | Action |
