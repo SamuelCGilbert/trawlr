@@ -156,7 +156,7 @@ footer a { color: var(--dim); }
       </a>
     </div>
     <div class="sub" id="dl-sub">Version @VERSION@. Free, open source (GPL-3.0). No account, no telemetry.</div>
-    <div class="shot"><img src="demo.gif" width="1060" height="660" alt="Typing “invoice” lists 78 matches in 2 milliseconds. A new invoice saved to Downloads appears at the top while the search is open. Then “ext:flac” lists the music."></div>
+    <div class="shot"><img src="demo.gif" width="1060" height="660" alt="Typing “invoice” lists 78 matches in 2 milliseconds. A new invoice saved to Downloads appears at the top while the search is open. Then typing “.flac” lists the music."></div>
   </div>
 
   <section id="why">
@@ -186,12 +186,12 @@ footer a { color: var(--dim); }
   <section id="search" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
     <div class="wrap">
       <h2>Say exactly what you mean</h2>
-      <p class="intro">Plain words are enough most of the time. When they aren't, the search syntax will be familiar to anyone who has used voidtools' Everything on Windows.</p>
+      <p class="intro">You don't need to learn anything: type part of a name, or an extension like <code>.pdf</code>. When that isn't enough, the search syntax below will be familiar to anyone who has used voidtools' Everything on Windows.</p>
       <div class="tablewrap">
         <table>
           <tr><th>Search</th><th>Finds</th></tr>
           <tr><td><code>tax 2025</code></td><td>names containing both words</td></tr>
-          <tr><td><code>*.pdf</code>, <code>ext:jpg;png</code></td><td>by wildcard or extension</td></tr>
+          <tr><td><code>.pdf</code></td><td>PDFs: just type the extension</td></tr>
           <tr><td><code>photos/ beach</code></td><td>a term with <code>/</code> matches the path, so: “beach”, somewhere under a <em>photos</em> folder</td></tr>
           <tr><td><code>size:&gt;1gb</code>, <code>dm:lastweek</code></td><td>by size or date modified</td></tr>
           <tr><td><code>video: !sample</code></td><td>by kind, leaving some out</td></tr>

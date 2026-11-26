@@ -13,7 +13,7 @@ Not affiliated with voidtools.
 
 **[trawlr.io](https://trawlr.io)** · **[Download](../../releases/latest)** · [Install](#install) · [Search syntax](#search-syntax)
 
-<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists 78 matches in 2 ms. A new invoice saved to Downloads appears at the top while the search is open. “ext:flac” then lists the music."></p>
+<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists 78 matches in 2 ms. A new invoice saved to Downloads appears at the top while the search is open. Typing “.flac” then lists the music."></p>
 
 ## How it works
 
@@ -228,7 +228,7 @@ trawlr --status                       # what is indexed and how it is watched
 
 ## Search syntax
 
-The syntax follows that of voidtools' Everything, so it will be familiar to its users.
+Most of the time plain text is enough: `tax 2025` finds names with both words, and `.flac` finds FLAC files. The syntax below is for when it isn't; it follows that of voidtools' Everything, so it will be familiar to its users.
 
 | Search | Finds |
 | --- | --- |

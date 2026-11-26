@@ -88,7 +88,7 @@ sleep 2.5
 xdotool type --delay 150 " 2025"
 sleep 2.5
 xdotool key ctrl+a BackSpace
-xdotool type --delay 70 "ext:flac"
+xdotool type --delay 100 ".flac"
 wait $REC
 quit
 ffmpeg -loglevel error -y -i /tmp/demo.mkv -vf "fps=12,scale=${W}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" "$OUT/demo.gif"
