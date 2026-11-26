@@ -11,6 +11,8 @@ no rescanning and no "update database" step, however long the program has been c
 
 Not affiliated with voidtools.
 
+**[trawlr.io](https://trawlr.io)** · **[Download](../../releases/latest)** · [Install](#install) · [Search syntax](#search-syntax)
+
 <p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists 78 matches in 2 ms. A new invoice saved to Downloads appears at the top while the search is open. “ext:flac” then lists the music."></p>
 
 ## How it works

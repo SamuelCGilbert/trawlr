@@ -7,7 +7,7 @@ PublisherUrl: https://github.com/SamuelCGilbert
 PublisherSupportUrl: https://github.com/SamuelCGilbert/trawlr/issues
 Author: Sam Gilbert
 PackageName: Trawlr
-PackageUrl: https://github.com/SamuelCGilbert/trawlr
+PackageUrl: https://trawlr.io
 License: GPL-3.0-or-later
 LicenseUrl: https://github.com/SamuelCGilbert/trawlr/blob/main/LICENSE
 ShortDescription: Instant file name search with an always-current index.

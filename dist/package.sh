@@ -94,7 +94,7 @@ deb)
         echo "Recommends: qt6-wayland"
         echo "Section: utils"
         echo "Priority: optional"
-        echo "Homepage: https://github.com/SamuelCGilbert/trawlr"
+        echo "Homepage: https://trawlr.io"
         echo "Description: $SUMMARY"
         echo "$DESCRIPTION" | sed 's/^/ /'
     } > "$ROOT/DEBIAN/control"
@@ -134,7 +134,7 @@ rpm)
         echo "Summary: $SUMMARY"
         echo "License: $LICENSE_NAME"
         echo "Packager: $MAINTAINER"
-        echo "URL: https://github.com/SamuelCGilbert/trawlr"
+        echo "URL: https://trawlr.io"
         echo "Requires: systemd"
         echo "Recommends: qt6-qtwayland"
         echo "%description"
