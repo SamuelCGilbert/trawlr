@@ -20,8 +20,13 @@ chown -R alex:alex /home/alex
 # configuration leaves out; take them in so the index looks like a machine.
 cat >>/etc/trawlrd/config.toml <<'CONF'
 extra_fs_types = ["overlay"]
-exclude = ["/src", "/out", "/proc", "/sys", "/dev"]
+exclude = ["/src", "/out", "/proc", "/sys", "/dev", "/tmp", "/run", "/var/lib/trawlrd"]
 CONF
+
+# Building the image and the steps above touched system files today; on a
+# real machine those would be weeks old, so the newest files are alex's.
+mkdir -p /var/lib/trawlrd /run/trawlrd
+find / -xdev -newermt '-2 days' -exec touch -h -d '40 days ago' {} + 2>/dev/null || true
 
 step starting trawlrd
 trawlrd >/tmp/trawlrd.log 2>&1 &
@@ -38,9 +43,11 @@ for _ in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
 # Run the window as alex, with fresh settings each time.
 gui() {
     theme=$1 scale=$2; shift 2
-    rm -rf /home/alex/.config/trawlr
-    mkdir -p /home/alex/.config/trawlr /tmp/rt-alex
-    cat >/home/alex/.config/trawlr/trawlr.conf <<CONF
+    # Settings and caches outside the home folder (and out of the index),
+    # so the window's own files are not the newest things in it.
+    rm -rf /tmp/alex
+    mkdir -p /tmp/alex/config/trawlr /tmp/alex/cache /tmp/alex/run
+    cat >/tmp/alex/config/trawlr/trawlr.conf <<CONF
 [General]
 trayIcon=false
 
@@ -49,9 +56,10 @@ theme=$theme
 sort=date
 descending=true
 CONF
-    chown -R alex:alex /home/alex/.config /tmp/rt-alex
-    chmod 700 /tmp/rt-alex
-    runuser -u alex -- env LANG=C.UTF-8 HOME=/home/alex XDG_RUNTIME_DIR=/tmp/rt-alex XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 QT_QPA_PLATFORMTHEME=kde \
+    chown -R alex:alex /tmp/alex
+    chmod 700 /tmp/alex/run
+    runuser -u alex -- env LANG=C.UTF-8 HOME=/home/alex XDG_RUNTIME_DIR=/tmp/alex/run XDG_CONFIG_HOME=/tmp/alex/config \
+        XDG_CACHE_HOME=/tmp/alex/cache XDG_DATA_HOME=/tmp/alex/data MESA_SHADER_CACHE_DISABLE=true XDG_CURRENT_DESKTOP=KDE KDE_SESSION_VERSION=6 QT_QPA_PLATFORMTHEME=kde \
         QT_SCALE_FACTOR="$scale" trawlr-gui "$@" >/tmp/gui.log 2>&1 &
     WID=$(xdotool search --sync --onlyvisible --name "Trawlr\$" | head -n1)
     xdotool windowsize "$WID" $((W * scale)) $((H * scale)) windowmove "$WID" 0 0

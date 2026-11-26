@@ -72,8 +72,11 @@ def main(home):
                 put(d("Pictures", "Camera", str(year), month, f"VID_{n:04d}.mp4"), mb(30, 400), max(age, 0))
                 n += 1
     for i in range(140):
-        put(d("Pictures", "Screenshots", f"Screenshot_2026{rng.randrange(1, 12):02d}{rng.randrange(1, 28):02d}_{rng.randrange(100000, 235959)}.png"),
-            kb(80, 900), rng.randrange(0, 330))
+        age = rng.uniform(1, 330)
+        when = time.strftime("%Y%m%d_%H%M%S", time.localtime(NOW - age * DAY))
+        path = d("Pictures", "Screenshots", f"Screenshot_{when}.png")
+        put(path, kb(80, 900), 0)
+        os.utime(path, (NOW - age * DAY,) * 2)
     for w in ["aurora", "dunes", "fjord", "redwoods", "tidepool", "nebula"]:
         put(d("Pictures", "Wallpapers", f"{w}-3840x2160.jpg"), mb(3, 9), rng.randrange(100, 700))
 
@@ -139,7 +142,7 @@ def main(home):
     # The usual hidden clutter.
     for i in range(6000):
         put(d(".cache", rng.choice(["thumbnails/large", "thumbnails/normal", "fontconfig", "pip/http"]), f"{rng.getrandbits(128):032x}"),
-            kb(1, 200), rng.randrange(0, 400))
+            kb(1, 200), rng.randrange(5, 400))
     for f in [".bashrc", ".profile", ".gitconfig"]:
         put(d(f), kb(0.5, 4), rng.randrange(100, 700))
 
