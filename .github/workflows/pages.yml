@@ -1,9 +1,12 @@
-# Publish the website (site/ plus the README pictures) to GitHub Pages.
+# Publish the website (site/ plus the README pictures) to GitHub Pages, with
+# its download links pointing at the files of the latest release.
 name: Pages
 on:
   push:
     branches: [main]
     paths: ['site/**', 'docs/**', 'assets/app-icon.svg', '.github/workflows/pages.yml']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -25,10 +28,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Assemble
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir _site
           cp site/* docs/demo.gif docs/screenshot-*.png _site/
           cp assets/app-icon.svg _site/icon.svg
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          sed -i "s/@VERSION@/${tag#v}/g" _site/index.html
+          # Every download link must name a file the release has.
+          grep -o "releases/download/$tag/[^\"]*" _site/index.html | sed 's|.*/||' | sort -u > linked
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort > attached
+          missing=$(comm -23 linked attached)
+          if [ -n "$missing" ]; then echo "::error::Not in release $tag: $missing"; exit 1; fi
+          echo "$(wc -l < linked) download links, all in $tag"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

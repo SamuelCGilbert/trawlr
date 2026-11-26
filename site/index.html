@@ -93,8 +93,20 @@ td:first-child { white-space: nowrap; }
 .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .tablewrap table tr:last-child td { border-bottom: 0; }
 
-.platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .platform h3 { display: flex; align-items: center; gap: 10px; }
+.platform .btn { margin-top: 16px; }
+#p-linux { grid-column: 1 / -1; }
+.platform.mine { order: -1; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.badge { display: none; font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 1px 9px; }
+.platform.mine .badge { display: inline-block; }
+.distros { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); column-gap: 36px; margin-top: 10px; }
+.distro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+.distro small { color: var(--faint); font-size: 13px; margin-left: 4px; }
+.distro > span:last-child { color: var(--dim); }
+.pills { display: flex; gap: 8px; }
+.pill { font-size: 14px; font-weight: 600; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--elevated); color: var(--text); }
+.pill:hover { text-decoration: none; border-color: var(--accent); color: var(--accent); }
 .platform ul { margin: 10px 0 0; padding-left: 18px; color: var(--dim); font-size: 15px; }
 .platform li { margin: 6px 0; }
 pre { background: var(--code); border-radius: 8px; padding: 10px 12px; margin: 10px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -110,6 +122,9 @@ footer a { color: var(--dim); }
   nav .hide-sm { display: none; }
   .hero { padding-top: 48px; }
   .shot { border-radius: 10px; margin-top: 36px; }
+}
+@media (max-width: 720px) {
+  .platforms { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -140,7 +155,7 @@ footer a { color: var(--dim); }
         Source code
       </a>
     </div>
-    <div class="sub" id="dl-sub">Free, open source (GPL-3.0). No account, no telemetry.</div>
+    <div class="sub" id="dl-sub">Version @VERSION@. Free, open source (GPL-3.0). No account, no telemetry.</div>
     <div class="shot"><img src="demo.gif" width="1060" height="660" alt="Typing “invoice” lists 78 matches in 2 milliseconds. A new invoice saved to Downloads appears at the top while the search is open. Then “ext:flac” lists the music."></div>
   </div>
 
@@ -190,34 +205,40 @@ footer a { color: var(--dim); }
   <section id="download">
     <div class="wrap">
       <h2>Download</h2>
-      <p class="intro">Every download is on the <a href="https://github.com/SamuelCGilbert/trawlr/releases/latest">latest release</a> page, with checksums. Installing needs an administrator, because the indexing service reads every disk; then administrators can search, and you can <a href="https://github.com/SamuelCGilbert/trawlr#who-can-search">let others in</a>.</p>
+      <p class="intro">Version @VERSION@. Installing needs an administrator, because the indexing service reads every disk; then administrators can search, and you can <a href="https://github.com/SamuelCGilbert/trawlr#who-can-search">let others in</a>. Checksums and release notes are on the <a href="https://github.com/SamuelCGilbert/trawlr/releases/latest">release page</a>.</p>
       <div class="platforms">
         <div class="card platform" id="p-windows">
-          <h3>Windows</h3>
+          <h3>Windows <span class="badge">Your system</span></h3>
           <p>Windows 10 or 11, x64.</p>
+          <a class="btn primary" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-windows-x64-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>Download installer (.exe)</a>
           <ul>
-            <li><a data-asset="windows-x64-setup.exe" href="https://github.com/SamuelCGilbert/trawlr/releases/latest">Installer (.exe)</a></li>
             <li>Not code-signed: if SmartScreen stops it, click <em>More info</em>, then <em>Run anyway</em>.</li>
           </ul>
         </div>
         <div class="card platform" id="p-mac">
-          <h3>macOS</h3>
+          <h3>macOS <span class="badge">Your system</span></h3>
           <p>macOS 12 or newer, Apple Silicon and Intel.</p>
-          <pre><code>brew install --cask samuelcgilbert/trawlr/trawlr</code></pre>
+          <a class="btn primary" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-macos.pkg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>Download installer (.pkg)</a>
           <ul>
-            <li>Or the <a data-asset="macos.pkg" href="https://github.com/SamuelCGilbert/trawlr/releases/latest">installer package (.pkg)</a>: not signed with an Apple Developer ID, so right-click it and choose <em>Open</em> the first time.</li>
+            <li>Not signed with an Apple Developer ID, so right-click it and choose <em>Open</em> the first time.</li>
             <li>Then give the daemon <a href="https://github.com/SamuelCGilbert/trawlr#macos">Full Disk Access</a>.</li>
+            <li>Or with Homebrew:</li>
           </ul>
+          <pre><code>brew install --cask samuelcgilbert/trawlr/trawlr</code></pre>
         </div>
         <div class="card platform" id="p-linux">
-          <h3>Linux</h3>
-          <p>Linux 5.9 or newer with systemd; x86-64 and ARM64.</p>
-          <ul>
-            <li>Ubuntu 22.04 and 24.04, Debian 12 and 13, and their derivatives: <code>.deb</code></li>
-            <li>Fedora and openSUSE Tumbleweed: <code>.rpm</code></li>
-            <li>Arch: <code>.pkg.tar.zst</code></li>
-            <li>Anything else: <a href="https://github.com/SamuelCGilbert/trawlr#from-source">build from source</a> with <code>./install.sh</code>.</li>
-          </ul>
+          <h3>Linux <span class="badge">Your system</span></h3>
+          <p>Linux 5.9 or newer with systemd. Pick your distribution and processor; on Linux Mint, Pop!_OS and other derivatives, use the file for the release it is based on.</p>
+          <div class="distros">
+            <div class="distro"><span>Ubuntu 24.04 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu24.04_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu24.04_arm64.deb">ARM64</a></span></div>
+            <div class="distro"><span>Ubuntu 22.04 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu22.04_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu22.04_arm64.deb">ARM64</a></span></div>
+            <div class="distro"><span>Debian 13 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.debian13_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.debian13_arm64.deb">ARM64</a></span></div>
+            <div class="distro"><span>Debian 12 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.debian12_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.debian12_arm64.deb">ARM64</a></span></div>
+            <div class="distro"><span>Fedora <small>.rpm</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-1.fc45.x86_64.rpm">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-1.fc45.aarch64.rpm">ARM64</a></span></div>
+            <div class="distro"><span>openSUSE Tumbleweed <small>.rpm</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-1.tumbleweed.x86_64.rpm">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-1.tumbleweed.aarch64.rpm">ARM64</a></span></div>
+            <div class="distro"><span>Arch Linux <small>.pkg.tar.zst</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-1-x86_64.pkg.tar.zst">x86-64</a></span></div>
+            <div class="distro"><span>Anything else</span><span><a href="https://github.com/SamuelCGilbert/trawlr#from-source">Build from source</a> with <code>./install.sh</code></span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -232,24 +253,16 @@ footer a { color: var(--dim); }
 </footer>
 
 <script>
-// Point the download links at the files of the latest release, and the big
-// button at the one for this system. Without the API, they go to the
-// release page, which is fine too.
+// Name this system on the big button and point it at its installer (Linux has
+// one file per distribution, so there it goes to the list). The links are
+// filled in with the latest release when the site is published.
 (function () {
   var ua = navigator.userAgent, os = /Windows/.test(ua) ? "windows" : /Mac OS X|Macintosh/.test(ua) && !/iPhone|iPad/.test(ua) ? "mac" : /Linux|X11/.test(ua) && !/Android/.test(ua) ? "linux" : null;
-  var label = document.getElementById("dl-label"), btn = document.getElementById("dl"), sub = document.getElementById("dl-sub");
-  var names = { windows: "Download for Windows", mac: "Download for macOS", linux: "Download for Linux" };
-  if (os) { label.textContent = names[os]; btn.href = "#p-" + os; }
-  fetch("https://api.github.com/repos/SamuelCGilbert/trawlr/releases/latest").then(function (r) { return r.ok ? r.json() : null; }).then(function (rel) {
-    if (!rel || !rel.assets) return;
-    var find = function (end) { for (var i = 0; i < rel.assets.length; i++) if (rel.assets[i].name.slice(-end.length) === end) return rel.assets[i]; };
-    document.querySelectorAll("[data-asset]").forEach(function (a) { var f = find(a.getAttribute("data-asset")); if (f) a.href = f.browser_download_url; });
-    var v = rel.tag_name.replace(/^v/, "");
-    var direct = { windows: "windows-x64-setup.exe", mac: "macos.pkg" }[os];
-    var f = direct && find(direct);
-    if (f) { btn.href = f.browser_download_url; label.textContent = names[os] + " (" + v + ")"; }
-    sub.textContent = "Version " + v + ". Free, open source (GPL-3.0). No account, no telemetry.";
-  }).catch(function () {});
+  if (!os) return;
+  var card = document.getElementById("p-" + os), btn = document.getElementById("dl"), direct = card.querySelector("a.btn");
+  card.classList.add("mine");
+  document.getElementById("dl-label").textContent = "Download for " + { windows: "Windows", mac: "macOS", linux: "Linux" }[os];
+  btn.href = direct ? direct.href : "#p-" + os;
 })();
 </script>
 </body>
