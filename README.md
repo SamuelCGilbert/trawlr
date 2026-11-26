@@ -11,6 +11,8 @@ no rescanning and no "update database" step, however long the program has been c
 
 Not affiliated with voidtools.
 
+<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists 78 matches in 2 ms. A new invoice saved to Downloads appears at the top while the search is open. “ext:flac” then lists the music."></p>
+
 ## How it works
 
 voidtools' Everything is fast on Windows because it never walks the disk: it reads the NTFS change journal and
@@ -119,6 +121,11 @@ Plasma), or bind a key to the command `trawlr` in your desktop's keyboard settin
 (`--purge` also deletes the configuration and the saved index).
 
 ## Using it
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img src="docs/screenshot-light.png" width="880" alt="The Trawlr window: a search for “invoice” with its matches listed by name, folder, size and date, newest first, and 78 items found in 2 ms.">
+</picture>
 
 | Key | Action |
 | --- | --- |
@@ -359,6 +366,7 @@ tests/vm/run.sh                # the same and more as root inside a throwaway QE
 
 tests/distros/run.sh           # in docker: build, install, test and package on Ubuntu, Debian,
                                # Fedora, openSUSE and Arch
+tests/demo/run.sh              # in docker: retake the pictures in docs/ from a made-up home folder
 ```
 
 On Windows, with Rust, the Visual Studio build tools, Qt 6 for MSVC and Inno Setup 6 installed,
