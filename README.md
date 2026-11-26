@@ -53,11 +53,17 @@ program, including from the tray with no window open.
 
 ### macOS
 
-Download `trawlr-…-macos.pkg` from the [Releases](../../releases) page. It runs on Apple Silicon
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask samuelcgilbert/trawlr/trawlr
+```
+
+Or download `trawlr-…-macos.pkg` from the [Releases](../../releases) page. It runs on Apple Silicon
 and Intel Macs with macOS 12 or newer.
 
 The package is not signed with an Apple Developer ID (that costs money, and Trawlr is free), so
-macOS will not open it with a double-click the first time. Either right-click it and choose
+macOS will not open a downloaded package with a double-click the first time. Either right-click it and choose
 **Open**, or, on macOS 15 and later, double-click it, then go to **System Settings → Privacy &
 Security** and click **Open Anyway** next to the message about it.
 
@@ -85,10 +91,10 @@ Needs Linux 5.9 or newer and systemd. Packages for each release are on the
 
 | Distribution | Package | Install with |
 | --- | --- | --- |
-| Ubuntu 22.04, 24.04, Debian 12, 13 (and derivatives such as Mint, Pop!_OS, KDE neon) | `trawlr_…~ubuntu24.04_amd64.deb` (pick your release) | `sudo apt install ./trawlr_….deb` |
+| Ubuntu 22.04, 24.04, Debian 12, 13 (and derivatives such as Mint, Pop!_OS, KDE neon) | `trawlr_….ubuntu24.04_amd64.deb` (pick your release) | `sudo apt install ./trawlr_….deb` |
 | Fedora | `trawlr-….fc45.x86_64.rpm` | `sudo dnf install ./trawlr-….rpm` |
 | openSUSE Tumbleweed | `trawlr-….tumbleweed.x86_64.rpm` | `sudo zypper install ./trawlr-….rpm` |
-| Arch, Manjaro, EndeavourOS | `dist/arch/PKGBUILD` (AUR) | `makepkg -si` |
+| Arch, Manjaro, EndeavourOS | `trawlr-…-x86_64.pkg.tar.zst` | `sudo pacman -U ./trawlr-….pkg.tar.zst` |
 
 There are `arm64`/`aarch64` builds as well. The packages start the service straight away (on Arch:
 `sudo systemctl enable --now trawlrd`). Members of the administrator group (`sudo` or `wheel`)
@@ -389,7 +395,10 @@ tests/macos/run.sh             # with sudo: index the whole Mac and check live u
 Releases: push a tag such as `v0.1.0` and [`release.yml`](.github/workflows/release.yml) builds
 the packages ([`dist/package.sh`](dist/package.sh), [`dist/arch/PKGBUILD`](dist/arch/PKGBUILD))
 for x86_64 and arm64, the Windows installer ([`dist/windows`](dist/windows)) and the macOS
-package ([`dist/macos`](dist/macos)), and attaches them to a draft release.
+package ([`dist/macos`](dist/macos)), and attaches them to a draft release. Once it is
+published, [`dist/listings.sh`](dist/listings.sh) `0.1.0` fills in the Homebrew cask (for the
+[tap](https://github.com/SamuelCGilbert/homebrew-trawlr)), the winget manifests and the AUR files
+from it, in `dist/out/listings`.
 
 The layout: [`src/index.rs`](src/index.rs) is the in-memory index, [`src/query.rs`](src/query.rs)
 the search language and matcher, [`src/scan.rs`](src/scan.rs) reads directories,

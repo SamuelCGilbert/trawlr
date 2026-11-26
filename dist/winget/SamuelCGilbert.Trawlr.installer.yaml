@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.28.0.schema.json
+PackageIdentifier: SamuelCGilbert.Trawlr
+PackageVersion: @VERSION@
+InstallerLocale: en-US
+MinimumOSVersion: 10.0.0.0
+InstallerType: inno
+Scope: machine
+ElevationRequirement: elevatesSelf
+UpgradeBehavior: install
+Commands:
+- trawlr
+ProductCode: '{1E6D7B05-56DD-4297-89DC-ADDD67670AAD}_is1'
+AppsAndFeaturesEntries:
+- DisplayName: Trawlr
+  Publisher: Sam Gilbert
+  ProductCode: '{1E6D7B05-56DD-4297-89DC-ADDD67670AAD}_is1'
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr-@VERSION@-windows-x64-setup.exe
+  InstallerSha256: @SHA256@
+ManifestType: installer
+ManifestVersion: 1.28.0
