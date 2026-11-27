@@ -21,7 +21,7 @@ case " $ID ${ID_LIKE:-} " in
             cargo python3 tar gzip curl
         [ "${1:-}" = package ] && zypper -nq install rpm-build ;;
     *" arch "*)
-        pacman -Syu --noconfirm --needed base-devel qt6-base rust python ;;
+        pacman -Syu --noconfirm --needed base-devel qt6-base hicolor-icon-theme rust python ;;
     *) echo "build-deps.sh: unknown distribution $ID" >&2; exit 1 ;;
 esac
 
