@@ -12,6 +12,9 @@
 #include <QDateTime>
 #include <QHeaderView>
 #include <QHelpEvent>
+#include <QKeyEvent>
+#include <QLineEdit>
+#include <QTimer>
 #include <QLocale>
 #include <QPainter>
 #include <QScrollBar>
@@ -128,7 +131,7 @@ ResultsView::ResultsView(ResultStore *store, QWidget *parent) : QAbstractScrollA
     m_header->resizeSection(ColSize, 96);
     m_header->resizeSection(ColDate, 180);
     connect(m_header, &QHeaderView::sectionResized, this, [this] { updateGeometries(); viewport()->update(); });
-    connect(m_header, &QHeaderView::sectionMoved, this, [this] { viewport()->update(); });
+    connect(m_header, &QHeaderView::sectionMoved, this, [this] { placeEditor(); viewport()->update(); });
     connect(m_header, &QHeaderView::sectionClicked, this, &ResultsView::sortRequested);
     // Only sent for sections that can be dragged (not the stretching Path).
     connect(m_header, &QHeaderView::sectionHandleDoubleClicked, this, &ResultsView::fitColumn);
@@ -152,6 +155,7 @@ ResultsView::ResultsView(ResultStore *store, QWidget *parent) : QAbstractScrollA
     });
 
     connect(store, &ResultStore::resultsReset, this, [this] {
+        finishEdit(false);
         m_sel.clear();
         m_current = m_anchor = m_hover = -1;
         updateGeometries();
@@ -186,6 +190,13 @@ ResultsView::ResultsView(ResultStore *store, QWidget *parent) : QAbstractScrollA
     connect(store, &ResultStore::refreshed, this, [this] {
         // Where did the rows we cared about end up? Look around the old spot.
         QHash<QString, qint64> where;
+        // Found under its own path, or the other side of a rename just made.
+        auto find = [&where, this](const QString &p) {
+            auto it = where.constFind(p);
+            if (it == where.constEnd() && m_renamed.contains(p))
+                it = where.constFind(m_renamed.value(p));
+            return it;
+        };
         const qint64 from = qMax<qint64>(0, m_snapTopRow - 3 * ResultStore::PageSize);
         const qint64 to = qMin(m_store->total(), m_snapTopRow + visibleRows() + 4 * ResultStore::PageSize);
         for (qint64 r = from; r < to; ++r) {
@@ -195,7 +206,7 @@ ResultsView::ResultsView(ResultStore *store, QWidget *parent) : QAbstractScrollA
         if (m_snapExact) {
             m_sel.clear();
             for (const QString &p : std::as_const(m_snapSel)) {
-                const auto it = where.constFind(p);
+                const auto it = find(p);
                 if (it != where.constEnd())
                     m_sel.add(*it, *it);
             }
@@ -204,14 +215,20 @@ ResultsView::ResultsView(ResultStore *store, QWidget *parent) : QAbstractScrollA
             // nothing selected than the wrong files.
             m_sel.clear();
         }
-        const auto cur = where.constFind(m_snapCurrent);
+        const auto cur = find(m_snapCurrent);
         m_current = cur != where.constEnd() ? *cur : (m_sel.isEmpty() ? -1 : m_sel.ranges().first().first);
         m_anchor = m_current;
         updateGeometries();
-        const auto top = where.constFind(m_snapTop);
+        const auto top = find(m_snapTop);
         if (m_snapTopRow > 0 && top != where.constEnd())
             verticalScrollBar()->setValue(int(*top));
         m_hover = -1;
+        if (m_editor && m_editor->isVisible()) {
+            const auto ed = find(m_editRow.path());
+            if (ed != where.constEnd())
+                m_editIndex = *ed;
+            placeEditor();
+        }
         scheduleAutoFit();
         viewport()->update();
         emit selectionChanged();
@@ -258,6 +275,7 @@ void ResultsView::updateGeometries()
     horizontalScrollBar()->setPageStep(vr.width());
     horizontalScrollBar()->setSingleStep(24);
     m_header->setOffset(horizontalScrollBar()->value());
+    placeEditor();
 }
 
 void ResultsView::resizeEvent(QResizeEvent *e)
@@ -273,6 +291,7 @@ void ResultsView::scrollContentsBy(int, int dy)
         scheduleAutoFit();
     m_header->setOffset(horizontalScrollBar()->value());
     m_hover = -1;
+    placeEditor();
     viewport()->update();
 }
 
@@ -533,6 +552,8 @@ void ResultsView::paintRow(QPainter &p, qint64 r, const QRect &rect)
             const QRect iconRect(cell.left(), cell.top() + (cell.height() - m_iconSize) / 2, m_iconSize, m_iconSize);
             iconFor(*row).paint(&p, iconRect, Qt::AlignCenter, row->gone ? QIcon::Disabled : QIcon::Normal);
             cell.setLeft(cell.left() + m_iconSize + 10);
+            if (r == m_editIndex && m_editor && m_editor->isVisible())
+                break; // the name editor covers it
             p.setPen(main);
             p.setFont(nameFont);
             drawCellText(p, cell, row->name, Qt::AlignLeft, Qt::ElideRight, true);
@@ -854,4 +875,159 @@ bool ResultsView::viewportEvent(QEvent *e)
         viewport()->update();
     }
     return QAbstractScrollArea::viewportEvent(e);
+}
+
+bool ResultsView::isEditingName() const
+{
+    return m_editor && m_editor->isVisible();
+}
+
+// The name without its extension, which is what one usually means to change.
+static int baseNameLength(const QString &name, bool isDir)
+{
+    const int dot = name.lastIndexOf(QLatin1Char('.'));
+    return !isDir && dot > 0 ? dot : int(name.size());
+}
+
+bool ResultsView::editName(const QString &text)
+{
+    if (m_sel.isEmpty())
+        return false;
+    const qint64 r = m_sel.contains(m_current) ? m_current : m_sel.ranges().first().first;
+    const Row *row = m_store->cached(r);
+    if (!row || row->gone)
+        return false;
+    finishEdit(false);
+    if (m_sel.count() > 1)
+        selectOnly(r);
+    else
+        ensureVisible(r);
+    m_current = m_anchor = r;
+    m_editRow = *row;
+    m_editIndex = r;
+
+    if (!m_editor) {
+        m_editor = new QLineEdit(viewport());
+        m_editor->setObjectName(QStringLiteral("renameEdit"));
+        m_editor->setAccessibleName(tr("New name"));
+        m_editor->installEventFilter(this);
+        connect(m_editor, &QLineEdit::textChanged, this, &ResultsView::placeEditor);
+    }
+    const QString start = text.isEmpty() ? row->name : text;
+    m_editor->setText(start);
+    m_editor->setFont(font());
+    m_editor->show();
+    placeEditor();
+    m_editor->setFocus(Qt::OtherFocusReason);
+    m_editor->setSelection(0, baseNameLength(start, row->isDir));
+    viewport()->update();
+    return true;
+}
+
+void ResultsView::placeEditor()
+{
+    if (!m_editor || !m_editor->isVisible())
+        return;
+    // Over the name, with its text where the name was drawn: the cell's
+    // padding and icon, less the editor's border, padding and own margin.
+    const int left = m_header->sectionViewportPosition(ColName) + 12 + m_iconSize + 10;
+    const int x = left - 7;
+    const int columnRight = m_header->sectionViewportPosition(ColName) + m_header->sectionSize(ColName) - 6;
+    const int wanted = m_editor->fontMetrics().horizontalAdvance(m_editor->text()) + 32;
+    const int w = qMax(qMin(qMax(columnRight - x, wanted), viewport()->width() - x - 6), 80);
+    const int h = qMin(m_rowH - 2, m_editor->fontMetrics().height() + 12);
+    const int y = int(m_editIndex - verticalScrollBar()->value()) * m_rowH + (m_rowH - h) / 2;
+    m_editor->setGeometry(x, y, w, h);
+}
+
+void ResultsView::finishEdit(bool commit)
+{
+    if (!m_editor || !m_editor->isVisible() || m_finishing)
+        return;
+    m_finishing = true;
+    const QString text = m_editor->text();
+    const Row row = m_editRow;
+    // Back to the list, unless the editor was left for something else.
+    // (Asked of the window, which remembers it while another is active.)
+    if (window()->focusWidget() == m_editor)
+        setFocus(Qt::OtherFocusReason);
+    m_editor->hide();
+    m_editIndex = -1;
+    m_finishing = false;
+    viewport()->update();
+    if (commit && text != row.name)
+        emit renameRequested(row, text);
+}
+
+void ResultsView::noteRenamed(const QString &oldPath, const QString &newPath)
+{
+    m_renamed.insert(oldPath, newPath);
+    m_renamed.insert(newPath, oldPath);
+    // Long enough for the index to report the change, and any refresh
+    // already under way to come back.
+    QTimer::singleShot(10000, this, [this, oldPath, newPath] {
+        if (m_renamed.value(oldPath) == newPath)
+            m_renamed.remove(oldPath);
+        if (m_renamed.value(newPath) == oldPath)
+            m_renamed.remove(newPath);
+    });
+    m_store->renameLoaded(oldPath, newPath);
+}
+
+bool ResultsView::eventFilter(QObject *o, QEvent *e)
+{
+    if (o != m_editor)
+        return QAbstractScrollArea::eventFilter(o, e);
+    switch (e->type()) {
+    case QEvent::ShortcutOverride:
+        // Every key is the editor's while it is open: Delete deletes a
+        // letter, not the file.
+        e->accept();
+        return true;
+    case QEvent::KeyPress: {
+        auto *ke = static_cast<QKeyEvent *>(e);
+        switch (ke->key()) {
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Tab:
+        case Qt::Key_Backtab:
+            finishEdit(true);
+            return true;
+        case Qt::Key_Escape:
+            finishEdit(false);
+            return true;
+        case Qt::Key_F2: {
+            // Again: the whole name, then the name without its extension.
+            const int base = baseNameLength(m_editor->text(), m_editRow.isDir);
+            if (m_editor->selectedText() == m_editor->text() && base < m_editor->text().size())
+                m_editor->setSelection(0, base);
+            else
+                m_editor->selectAll();
+            return true;
+        }
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+            return true; // not on to the list underneath
+        default:
+            break;
+        }
+        break;
+    }
+    case QEvent::FocusOut: {
+        // Clicking elsewhere keeps the new name; switching to another window
+        // or opening the editor's own menu leaves it open.
+        const Qt::FocusReason why = static_cast<QFocusEvent *>(e)->reason();
+        if (why != Qt::ActiveWindowFocusReason && why != Qt::PopupFocusReason)
+            QTimer::singleShot(0, this, [this] {
+                if (m_editor && !m_editor->hasFocus())
+                    finishEdit(true);
+            });
+        break;
+    }
+    default:
+        break;
+    }
+    return QAbstractScrollArea::eventFilter(o, e);
 }

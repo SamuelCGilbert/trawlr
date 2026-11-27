@@ -187,6 +187,7 @@ Plasma), or bind a key to the command `trawlr` in your desktop's keyboard settin
 | `Ctrl+C` | copy the files (paste them into a file manager) |
 | `Ctrl+Shift+C` | copy the full path |
 | `Alt+Enter` | properties |
+| `F2` | rename in place (`Enter` keeps the new name, `Esc` cancels) |
 | `Delete` | move to the trash (asks first) |
 | `Ctrl+I` `Ctrl+B` `Ctrl+U` `Ctrl+R` | match case, whole word, path, regex |
 | `Esc` | clear the search; close the window if it is already empty |

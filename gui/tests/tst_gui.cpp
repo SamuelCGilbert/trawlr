@@ -2,6 +2,7 @@
 // then types, navigates, sorts and changes files on disk, checking what the
 // window shows. Run with QT_QPA_PLATFORM=offscreen; set TRAWLRD_BIN to
 // the daemon binary (default ../../../target/release/trawlrd).
+#include "fileops.h"
 #include "instance.h"
 #include "mainwindow.h"
 #include "optionsdialog.h"
@@ -700,6 +701,169 @@ private slots:
         m_search->setText("rs");
         QTRY_COMPARE(status(), QStringLiteral("2 items"));
         m_search->clear();
+    }
+
+    QLineEdit *renameEditor() const { return m_view->findChild<QLineEdit *>("renameEdit"); }
+    // Close the next message box, keeping its text.
+    static void dismissNextBox(QString *text)
+    {
+        auto *t = new QTimer;
+        QObject::connect(t, &QTimer::timeout, [t, text] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                *text = box->text();
+                box->buttons().first()->click();
+                t->deleteLater();
+            }
+        });
+        t->start(10);
+    }
+
+    // Keys reach the menu commands only in the active window, which the
+    // offscreen platform forgets about after a message box.
+    void activateMainWindow()
+    {
+        m_win->bringToFront();
+        m_win->activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(m_win));
+    }
+
+    void renameInPlace()
+    {
+        closeExtraWindows(m_win);
+        activateMainWindow();
+        m_search->setText("beta");
+        QTRY_COMPARE(status(), QStringLiteral("1 item"));
+        QTest::keyClick(m_search, Qt::Key_Down);
+        QCOMPARE(nameAt(m_view->currentRow()), QStringLiteral("beta.txt"));
+
+        // It is on the right-click menu, and F2 opens the name for editing
+        // with the part before the extension chosen.
+        QAction *rename = action("Rename");
+        QVERIFY(rename);
+        QCOMPARE(rename->shortcut(), QKeySequence(Qt::Key_F2));
+        QTest::keyClick(m_view, Qt::Key_F2);
+        QLineEdit *ed = renameEditor();
+        QVERIFY(ed && ed->isVisible());
+        QVERIFY(ed->hasFocus());
+        QCOMPARE(ed->text(), QStringLiteral("beta.txt"));
+        QCOMPARE(ed->selectedText(), QStringLiteral("beta"));
+        // F2 again takes in the extension too.
+        QTest::keyClick(ed, Qt::Key_F2);
+        QCOMPARE(ed->selectedText(), QStringLiteral("beta.txt"));
+        QTest::keyClick(ed, Qt::Key_F2);
+        QCOMPARE(ed->selectedText(), QStringLiteral("beta"));
+
+        // Delete edits the name; it does not move the file to the trash.
+        QTest::keyClick(ed, Qt::Key_Delete);
+        QCOMPARE(ed->text(), QStringLiteral(".txt"));
+        QTest::keyClick(ed, Qt::Key_Escape);
+        QVERIFY(!ed->isVisible());
+        QVERIFY(m_view->hasFocus());
+        QVERIFY(QFile::exists(tree() + "/docs/beta.txt"));
+
+        // Enter renames it. The list shows the new name at once and keeps
+        // it selected once the index has caught up.
+        m_search->setText("txt");
+        QTRY_COMPARE(status(), QStringLiteral("1 item"));
+        QTest::keyClick(m_search, Qt::Key_Down);
+        QTest::keyClick(m_view, Qt::Key_F2);
+        QTest::keyClicks(ed, "notes");
+        QTest::keyClick(ed, Qt::Key_Return);
+        QTRY_VERIFY(QFile::exists(tree() + "/docs/notes.txt"));
+        QVERIFY(!QFile::exists(tree() + "/docs/beta.txt"));
+        QTRY_COMPARE(nameAt(0), QStringLiteral("notes.txt"));
+        write("docs/later.txt", 1); // the results change, the selection stays
+        QTRY_COMPARE(m_store->total(), 2);
+        QTRY_COMPARE(nameAt(1), QStringLiteral("notes.txt"));
+        QTRY_COMPARE(m_view->selection().rows(10), QList<qint64>{1});
+        QCOMPARE(m_view->currentRow(), 1);
+
+        // A name that is taken: nothing is replaced, the reason is shown and
+        // the editor comes back to fix it.
+        QTest::keyClick(m_view, Qt::Key_F2);
+        QTest::keyClicks(ed, "later");
+        QString said;
+        dismissNextBox(&said);
+        QTest::keyClick(ed, Qt::Key_Return);
+        QTRY_VERIFY(said.contains("already"));
+        QTRY_VERIFY(ed->isVisible());
+        QCOMPARE(ed->text(), QStringLiteral("later.txt"));
+        QTest::keyClick(ed, Qt::Key_Escape);
+        activateMainWindow();
+        QVERIFY(m_view->hasFocus());
+        QCOMPARE(QFileInfo(tree() + "/docs/later.txt").size(), 1);
+        QCOMPARE(QFileInfo(tree() + "/docs/notes.txt").size(), 10);
+
+        // A slash is not allowed in a name.
+        QTest::keyClick(m_view, Qt::Key_F2);
+        QTest::keyClicks(ed, "a/b");
+        said.clear();
+        dismissNextBox(&said);
+        QTest::keyClick(ed, Qt::Key_Return);
+        QTRY_VERIFY(said.contains("/"));
+        QTRY_VERIFY(ed->isVisible());
+        QTest::keyClick(ed, Qt::Key_Escape);
+        activateMainWindow();
+
+        // Clicking another row keeps what was typed, and renames from the
+        // right-click menu too.
+        QTest::keyClick(m_view, Qt::Key_F2);
+        QTest::keyClicks(ed, "beta");
+        QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, QPoint(40, m_view->rowHeight() / 2));
+        QTRY_VERIFY(QFile::exists(tree() + "/docs/beta.txt"));
+        QVERIFY(!ed->isVisible());
+        QVERIFY(QFile::remove(tree() + "/docs/later.txt"));
+        QTRY_COMPARE(m_store->total(), 1);
+        QTRY_COMPARE(nameAt(0), QStringLiteral("beta.txt"));
+        m_view->selectOnly(0);
+        auto *t = new QTimer;
+        QObject::connect(t, &QTimer::timeout, [t] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            t->deleteLater();
+            for (QAction *a : menu->actions())
+                if (a->text().remove('&') == QLatin1String("Rename"))
+                    menu->setActiveAction(a);
+            QTest::keyClick(menu, Qt::Key_Return);
+        });
+        t->start(10);
+        emit m_view->contextMenuRequested(m_view->mapToGlobal(QPoint(20, 20)));
+        QTRY_VERIFY(ed->isVisible());
+        QCOMPARE(ed->selectedText(), QStringLiteral("beta"));
+        QTest::keyClick(ed, Qt::Key_Escape);
+        m_search->clear();
+    }
+
+    void renameHelper()
+    {
+        const QString d = m_dir.path() + "/ops";
+        QVERIFY(QDir().mkpath(d + "/folder"));
+        QFile f(d + "/one");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+        QFile g(d + "/two");
+        QVERIFY(g.open(QIODevice::WriteOnly));
+        g.close();
+        QString error;
+        QVERIFY(!FileOps::rename(d + "/one", d + "/two", &error));
+        QVERIFY(error.contains("already"));
+        QVERIFY(!FileOps::rename(d + "/missing", d + "/three", &error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY2(FileOps::rename(d + "/one", d + "/One", &error), qPrintable(error));
+        QVERIFY(QDir(d).entryList(QDir::Files).contains("One"));
+        QVERIFY2(FileOps::rename(d + "/folder", d + "/renamed folder", &error), qPrintable(error));
+        QVERIFY(QFileInfo(d + "/renamed folder").isDir());
+        QVERIFY(FileOps::invalidNameReason("ok name.txt").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("  ").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("..").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("a/b").isEmpty());
+#ifdef Q_OS_WIN
+        QVERIFY(!FileOps::invalidNameReason("a:b").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("con.txt").isEmpty());
+        QVERIFY(!FileOps::invalidNameReason("trailing.").isEmpty());
+#endif
     }
 
     void survivesADaemonRestart()

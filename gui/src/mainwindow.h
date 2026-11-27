@@ -90,6 +90,8 @@ private:
     void copyFiles();
     void copyPaths(bool namesOnly);
     void trashSelected();
+    void renameSelected();
+    void renameItem(const Row &row, const QString &newName);
     void showProperties();
     void startDrag();
     QWidget *buildPrivacyNotice(QWidget *parent);

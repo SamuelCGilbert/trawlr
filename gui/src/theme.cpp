@@ -261,6 +261,7 @@ QLineEdit#searchEdit {
     background: transparent; border: none; padding: 0; margin: 0;
     selection-background-color: {accentSoftStrong}; selection-color: {text};
 }
+QLineEdit#renameEdit { border-radius: 6px; padding: 0 4px; border: 1px solid {accent}; background: {field}; }
 
 QPushButton {
     background: {field}; color: {text}; border: 1px solid {border};

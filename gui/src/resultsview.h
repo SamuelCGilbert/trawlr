@@ -13,6 +13,7 @@
 #include <QMimeDatabase>
 
 class QHeaderView;
+class QLineEdit;
 
 class ResultsView : public QAbstractScrollArea {
     Q_OBJECT
@@ -40,6 +41,15 @@ public:
     // Sizes one column to the widest of its cells on screen (and its title).
     void fitColumn(int col);
 
+    // Opens the name of the selected row (the current one, if several are
+    // selected) for editing in place, with `text` in it if given. False if
+    // there is nothing to rename.
+    bool editName(const QString &text = QString());
+    bool isEditingName() const;
+    // An item was renamed on disk: show its new name at once, before the
+    // index catches up, and keep it selected when the results refresh.
+    void noteRenamed(const QString &oldPath, const QString &newPath);
+
 signals:
     // Double-click (column under the pointer) or Return (column -1), with the modifiers held.
     void activated(int column, Qt::KeyboardModifiers modifiers);
@@ -48,6 +58,8 @@ signals:
     void sortRequested(int column);
     void dragRequested();
     void textTyped(const QString &text);
+    // The name editor was closed with a new name in it.
+    void renameRequested(const Row &row, const QString &newName);
 
 protected:
     void paintEvent(QPaintEvent *e) override;
@@ -62,6 +74,7 @@ protected:
     void focusInEvent(QFocusEvent *e) override;
     void focusOutEvent(QFocusEvent *e) override;
     bool viewportEvent(QEvent *e) override;
+    bool eventFilter(QObject *o, QEvent *e) override;
     void changeEvent(QEvent *e) override;
 
 private:
@@ -81,6 +94,8 @@ private:
     int headerWidth(int col) const;
     void scheduleAutoFit();
     void autoFit();
+    void placeEditor();
+    void finishEdit(bool commit);
 
     ResultStore *m_store;
     QHeaderView *m_header;
@@ -115,6 +130,15 @@ private:
     // Widest content seen per column since the last new search; columns only
     // grow while scrolling one result set, so they do not jitter.
     int m_fitSeen[ColCount] = {};
+
+    // The name being edited in place (F2), and what it was.
+    QLineEdit *m_editor = nullptr;
+    Row m_editRow;
+    qint64 m_editIndex = -1;
+    bool m_finishing = false;
+    // Old and new paths of items just renamed, both ways round, for finding
+    // them again in results that may or may not show the change yet.
+    QHash<QString, QString> m_renamed;
 
     QMimeDatabase m_mime;
     QHash<QString, QIcon> m_icons;

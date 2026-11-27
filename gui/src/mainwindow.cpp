@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "fileops.h"
 #include "optionsdialog.h"
 #include "resultstore.h"
 #include "icons.h"
@@ -187,6 +188,9 @@ MainWindow::MainWindow(const QString &initialSearch, QWidget *parent) : QMainWin
     connect(m_view, &ResultsView::selectionChanged, this, &MainWindow::updateStatusBar);
     connect(m_view, &ResultsView::contextMenuRequested, this, &MainWindow::showContextMenu);
     connect(m_view, &ResultsView::dragRequested, this, &MainWindow::startDrag);
+    // Queued: the editor may close inside a click on another row, and any
+    // message about the rename should come after that click is done.
+    connect(m_view, &ResultsView::renameRequested, this, &MainWindow::renameItem, Qt::QueuedConnection);
     connect(m_view, &ResultsView::textTyped, this, [this](const QString &t) {
         m_search->setFocus();
         m_search->insert(t);
@@ -291,6 +295,7 @@ void MainWindow::buildMenus()
     add(file, "file.copyPath", tr("Copy Full &Path"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C), [this] { copyPaths(false); }, true);
     add(file, "file.copyName", tr("Copy &Name"), QKeySequence(), [this] { copyPaths(true); }, true);
     file->addSeparator();
+    add(file, "file.rename", tr("Rena&me"), QKeySequence(Qt::Key_F2), [this] { renameSelected(); }, true)->setIcon(QIcon::fromTheme("edit-rename"));
     m_trash = add(file, "file.trash", tr("Move to &Trash"), QKeySequence(Qt::Key_Delete), [this] { trashSelected(); }, true);
     m_trash->setIcon(QIcon::fromTheme("user-trash"));
     add(file, "file.properties", tr("P&roperties"), QKeySequence(Qt::ALT | Qt::Key_Return), [this] { showProperties(); }, true)->setIcon(QIcon::fromTheme("document-properties"));
@@ -1020,6 +1025,34 @@ void MainWindow::trashSelected()
     });
 }
 
+void MainWindow::renameSelected()
+{
+    m_view->editName();
+}
+
+void MainWindow::renameItem(const Row &row, const QString &newName)
+{
+    Row renamed = row;
+    renamed.name = newName;
+    const QString from = row.path();
+    const QString to = renamed.path();
+    QString error = FileOps::invalidNameReason(newName);
+    if (error.isEmpty() && FileOps::rename(from, to, &error)) {
+        m_view->noteRenamed(from, to);
+        updateStatusBar();
+        return;
+    }
+    // Straight back to the name to fix it, unless the user has moved on
+    // (clicked another row, or out of the list).
+    const Row *cur = m_store->cached(m_view->currentRow());
+    const bool again = m_view->hasFocus() && cur && cur->path() == from && m_view->selection().count() == 1;
+    QMessageBox::warning(this, tr("Rename"), tr("“%1” could not be renamed to “%2”.\n\n%3").arg(row.name, newName, error));
+    if (again) {
+        m_view->setFocus();
+        m_view->editName(newName);
+    }
+}
+
 void MainWindow::startDrag()
 {
     const QList<Row> rows = m_view->loadedSelection(2000);
@@ -1035,7 +1068,7 @@ void MainWindow::showContextMenu(const QPoint &globalPos)
     const QList<QStringList> groups = {
         {"file.open", "file.openFolder", "file.openTerminal", "file.runTerminal"},
         {"file.copy", "file.copyPath", "file.copyName"},
-        {"file.trash", "file.properties"},
+        {"file.rename", "file.trash", "file.properties"},
     };
     QMenu menu(this);
     for (const QStringList &group : groups) {

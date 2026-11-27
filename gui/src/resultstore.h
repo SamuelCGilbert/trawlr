@@ -36,6 +36,10 @@ public:
     const Row *cached(qint64 r) const;
     void setVisibleRange(qint64 top, int count);
 
+    // An item was renamed: change it, and what is inside it if it is a
+    // folder, in the rows already loaded.
+    void renameLoaded(const QString &oldPath, const QString &newPath);
+
     // Hand `done` the given rows once all of them are loaded.
     void collect(const QList<qint64> &rows, std::function<void(const QList<Row> &)> done);
 

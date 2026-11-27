@@ -142,6 +142,29 @@ void ResultStore::requestPage(qint64 page)
     m_client->requestRows(m_qid, page * PageSize, PageSize);
 }
 
+void ResultStore::renameLoaded(const QString &oldPath, const QString &newPath)
+{
+    const QChar sep = Platform::separator();
+    const int cut = oldPath.lastIndexOf(sep);
+    const QString oldName = oldPath.mid(cut + 1);
+    const QString newName = newPath.mid(newPath.lastIndexOf(sep) + 1);
+    const QString inside = oldPath + sep;
+    bool changed = false;
+    for (auto it = m_pages.begin(); it != m_pages.end(); ++it) {
+        for (Row &r : *it) {
+            if (r.name == oldName && r.path() == oldPath) {
+                r.name = newName;
+                changed = true;
+            } else if (r.dir == oldPath || r.dir.startsWith(inside)) {
+                r.dir = newPath + r.dir.mid(oldPath.size());
+                changed = true;
+            }
+        }
+    }
+    if (changed && m_total > 0)
+        emit rowsLoaded(0, m_total - 1);
+}
+
 const Row *ResultStore::cached(qint64 r) const
 {
     if (r < 0 || r >= m_total)
