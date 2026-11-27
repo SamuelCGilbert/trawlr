@@ -2,7 +2,7 @@
 # Arch Linux package, built from a tagged release's source. For the AUR, run
 # `updpkgsums` after changing pkgver.
 pkgname=trawlr
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Instant file-name search with a live, always-current index"
 arch=(x86_64 aarch64)
