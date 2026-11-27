@@ -83,7 +83,7 @@ REC=$!
 t() { xdotool type --delay 70 "$1"; sleep "$2"; }
 sleep 0.8
 t "invoice" 1.4
-t " documents/" 1.4
+t " documents" 1.4
 t " .pdf" 1.4
 t " kestrel" 1.4
 # An invoice moved out of Downloads shows up while the search is open.

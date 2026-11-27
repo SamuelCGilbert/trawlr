@@ -13,7 +13,7 @@ Not affiliated with voidtools.
 
 **[trawlr.io](https://trawlr.io)** · **[Download](../../releases/latest)** · [Install](#install) · [Search syntax](#search-syntax)
 
-<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists every matching file. Adding “documents/”, then “.pdf”, then “kestrel” narrows it step by step from 93 matches to one client’s 11 invoices, each in about 2 ms. An invoice moved in from Downloads appears at the top while the search is open. Then “.flac” lists the music."></p>
+<p align="center"><img src="docs/demo.gif" width="880" alt="Typing “invoice” lists every matching file. Adding “documents”, then “.pdf”, then “kestrel” narrows it step by step from 93 matches to one client’s 11 invoices, each in about 2 ms. An invoice moved in from Downloads appears at the top while the search is open. Then “.flac” lists the music."></p>
 
 ## How it works
 
