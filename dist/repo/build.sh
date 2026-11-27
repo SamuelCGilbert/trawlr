@@ -89,6 +89,8 @@ gpgcheck=1
 repo_gpgcheck=1
 gpgkey=$BASE/trawlr.asc
 REPO
+    # zypper only looks for updates in sources that refresh themselves.
+    [ "$1" != opensuse ] || echo "autorefresh=1" >> "$d/trawlr.repo"
 }
 rpmrepo fedora 'fc[0-9]*'
 rpmrepo opensuse tumbleweed
