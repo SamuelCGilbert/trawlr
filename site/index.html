@@ -109,7 +109,20 @@ td:first-child { white-space: nowrap; }
 .pill:hover { text-decoration: none; border-color: var(--accent); color: var(--accent); }
 .platform ul { margin: 10px 0 0; padding-left: 18px; color: var(--dim); font-size: 15px; }
 .platform li { margin: 6px 0; }
-pre { background: var(--code); border-radius: 8px; padding: 10px 12px; margin: 10px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.platform h4 { margin: 24px 0 4px; font-size: 15px; }
+.sources { margin-top: 8px; }
+.sources details { border-bottom: 1px solid var(--border); }
+.sources summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 15px; }
+.sources summary::-webkit-details-marker { display: none; }
+.sources summary::before { content: ""; width: 7px; height: 7px; border: solid var(--faint); border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; margin: 0 4px 0 2px; flex: none; }
+.sources details[open] summary::before { transform: rotate(45deg); }
+.sources summary small { color: var(--faint); font-size: 13px; }
+.sources .note { font-size: 14px; margin: 4px 0 12px; }
+.platform .fpr { font-size: 13px; margin-top: 10px; color: var(--faint); }
+.platform .fpr code { font-size: 12px; }
+.copy { position: absolute; top: 7px; right: 7px; font: 600 12px/1 inherit; font-family: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--elevated); color: var(--dim); cursor: pointer; }
+.copy:hover { color: var(--accent); border-color: var(--accent); }
+pre { position: relative; background: var(--code); border-radius: 8px; padding: 10px 64px 10px 12px; margin: 10px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 pre code { background: none; padding: 0; }
 
 footer { border-top: 1px solid var(--border); padding: 32px 0 48px; color: var(--faint); font-size: 14px; }
@@ -228,7 +241,26 @@ footer a { color: var(--dim); }
         </div>
         <div class="card platform" id="p-linux">
           <h3>Linux <span class="badge">Your system</span></h3>
-          <p>Linux 5.9 or newer with systemd. Pick your distribution and processor; on Linux Mint, Pop!_OS and other derivatives, use the file for the release it is based on.</p>
+          <p>Linux 5.9 or newer with systemd.</p>
+          <h4>Install with updates</h4>
+          <p>Add Trawlr's package source once, and new versions arrive with your system's own updates.</p>
+          <div class="sources">
+            <details><summary>Ubuntu, Debian, Mint, Pop!_OS, KDE neon <small>apt</small></summary><pre><code>sudo install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://trawlr.io/trawlr.gpg | sudo tee /etc/apt/keyrings/trawlr.gpg &gt;/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/trawlr.gpg] https://trawlr.io/apt $(. /etc/os-release; echo ${UBUNTU_CODENAME:-$VERSION_CODENAME}) main" | sudo tee /etc/apt/sources.list.d/trawlr.list
+sudo apt update &amp;&amp; sudo apt install trawlr</code></pre><p class="note">Ubuntu 22.04 and 24.04, Debian 12 and 13, and distributions based on them.</p></details>
+            <details><summary>Fedora <small>dnf</small></summary><pre><code>sudo curl -fsSLo /etc/yum.repos.d/trawlr.repo https://trawlr.io/rpm/fedora/trawlr.repo
+sudo dnf install trawlr</code></pre><p class="note">dnf asks you to trust the signing key the first time.</p></details>
+            <details><summary>openSUSE Tumbleweed <small>zypper</small></summary><pre><code>sudo zypper addrepo https://trawlr.io/rpm/opensuse/trawlr.repo
+sudo zypper install trawlr</code></pre><p class="note">zypper asks you to trust the signing key the first time.</p></details>
+            <details><summary>Arch, Manjaro, EndeavourOS <small>pacman</small></summary><pre><code>curl -fsSL https://trawlr.io/trawlr.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 163F705273C9EFA11965B4246EAE964BA9533B02
+printf '\n[trawlr]\nServer = https://trawlr.io/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu trawlr</code></pre><p class="note">x86-64. Then <code>sudo systemctl enable --now trawlrd</code> starts the index.</p></details>
+          </div>
+          <p class="fpr">Signing key fingerprint: <code>163F 7052 73C9 EFA1 1965 B424 6EAE 964B A953 3B02</code></p>
+          <h4>Or download a package</h4>
+          <p>Installs once, without updates. Pick your distribution and processor; on Linux Mint, Pop!_OS and other derivatives, use the file for the release it is based on.</p>
           <div class="distros">
             <div class="distro"><span>Ubuntu 24.04 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu24.04_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu24.04_arm64.deb">ARM64</a></span></div>
             <div class="distro"><span>Ubuntu 22.04 <small>.deb</small></span><span class="pills"><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu22.04_amd64.deb">x86-64</a><a class="pill" href="https://github.com/SamuelCGilbert/trawlr/releases/download/v@VERSION@/trawlr_@VERSION@-1.ubuntu22.04_arm64.deb">ARM64</a></span></div>
@@ -252,6 +284,19 @@ footer a { color: var(--dim); }
   </div>
 </footer>
 
+<script>
+// A copy button on every command.
+document.querySelectorAll("pre").forEach(function (pre) {
+  var b = document.createElement("button");
+  b.className = "copy"; b.type = "button"; b.textContent = "Copy";
+  b.addEventListener("click", function () {
+    navigator.clipboard.writeText(pre.querySelector("code").textContent).then(function () {
+      b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500);
+    });
+  });
+  pre.appendChild(b);
+});
+</script>
 <script>
 // Name this system on the big button and point it at its installer (Linux has
 // one file per distribution, so there it goes to the list). The links are

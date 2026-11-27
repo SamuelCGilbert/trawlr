@@ -88,17 +88,55 @@ To remove everything: `sudo "/Applications/Trawlr.app/Contents/Resources/uninsta
 
 ### Linux
 
-Needs Linux 5.9 or newer and systemd. Packages for each release are on the
-[Releases](../../releases) page:
+Needs Linux 5.9 or newer and systemd. The easiest way is to add Trawlr's package source once;
+updates then arrive with the rest of the system (`apt upgrade`, `dnf upgrade`, `pacman -Syu`).
+
+**Ubuntu 22.04 / 24.04, Debian 12 / 13** and derivatives such as Mint, Pop!_OS and KDE neon:
+
+```sh
+sudo install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://trawlr.io/trawlr.gpg | sudo tee /etc/apt/keyrings/trawlr.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/trawlr.gpg] https://trawlr.io/apt $(. /etc/os-release; echo ${UBUNTU_CODENAME:-$VERSION_CODENAME}) main" | sudo tee /etc/apt/sources.list.d/trawlr.list
+sudo apt update && sudo apt install trawlr
+```
+
+**Fedora:**
+
+```sh
+sudo curl -fsSLo /etc/yum.repos.d/trawlr.repo https://trawlr.io/rpm/fedora/trawlr.repo
+sudo dnf install trawlr
+```
+
+**openSUSE Tumbleweed:**
+
+```sh
+sudo zypper addrepo https://trawlr.io/rpm/opensuse/trawlr.repo
+sudo zypper install trawlr
+```
+
+**Arch, Manjaro, EndeavourOS:**
+
+```sh
+curl -fsSL https://trawlr.io/trawlr.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 163F705273C9EFA11965B4246EAE964BA9533B02
+printf '\n[trawlr]\nServer = https://trawlr.io/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu trawlr
+```
+
+dnf and zypper ask you to trust the signing key the first time; its fingerprint is
+`163F 7052 73C9 EFA1 1965  B424 6EAE 964B A953 3B02`.
+
+Or download a package from the [Releases](../../releases) page and install it once (it will not
+update itself):
 
 | Distribution | Package | Install with |
 | --- | --- | --- |
-| Ubuntu 22.04, 24.04, Debian 12, 13 (and derivatives such as Mint, Pop!_OS, KDE neon) | `trawlr_….ubuntu24.04_amd64.deb` (pick your release) | `sudo apt install ./trawlr_….deb` |
+| Ubuntu, Debian and derivatives | `trawlr_….ubuntu24.04_amd64.deb` (pick your release) | `sudo apt install ./trawlr_….deb` |
 | Fedora | `trawlr-….fc45.x86_64.rpm` | `sudo dnf install ./trawlr-….rpm` |
 | openSUSE Tumbleweed | `trawlr-….tumbleweed.x86_64.rpm` | `sudo zypper install ./trawlr-….rpm` |
 | Arch, Manjaro, EndeavourOS | `trawlr-…-x86_64.pkg.tar.zst` | `sudo pacman -U ./trawlr-….pkg.tar.zst` |
 
-There are `arm64`/`aarch64` builds as well. The packages start the service straight away (on Arch:
+There are `arm64`/`aarch64` builds as well (except for Arch). The packages start the service straight away (on Arch:
 `sudo systemctl enable --now trawlrd`). Members of the administrator group (`sudo` or `wheel`)
 can search; see [Who can search](#who-can-search) to let others in.
 
@@ -375,6 +413,8 @@ tests/vm/run.sh                # the same and more as root inside a throwaway QE
 tests/distros/run.sh           # in docker: build, install, test and package on Ubuntu, Debian,
                                # Fedora, openSUSE and Arch
 tests/demo/run.sh              # in docker: retake the pictures in docs/ from a made-up home folder
+tests/repo/run.sh              # in docker: build the apt/dnf/zypper/pacman sources from the latest
+                               # release, set them up as the install steps say, install and upgrade
 ```
 
 On Windows, with Rust, the Visual Studio build tools, Qt 6 for MSVC and Inno Setup 6 installed,
@@ -400,7 +440,10 @@ for x86_64 and arm64, the Windows installer ([`dist/windows`](dist/windows)) and
 package ([`dist/macos`](dist/macos)), and attaches them to a draft release. Once it is
 published, [`dist/listings.sh`](dist/listings.sh) `0.1.0` fills in the Homebrew cask (for the
 [tap](https://github.com/SamuelCGilbert/homebrew-trawlr)), the winget manifests and the AUR files
-from it, in `dist/out/listings`.
+from it, in `dist/out/listings`. Publishing also runs [`pages.yml`](.github/workflows/pages.yml),
+which rebuilds trawlr.io and its signed apt, dnf/zypper and pacman sources
+([`dist/repo/build.sh`](dist/repo/build.sh)) from the new release's packages; the signing key is
+the `PACKAGE_SIGNING_KEY` secret.
 
 The layout: [`src/index.rs`](src/index.rs) is the in-memory index, [`src/query.rs`](src/query.rs)
 the search language and matcher, [`src/scan.rs`](src/scan.rs) reads directories,
