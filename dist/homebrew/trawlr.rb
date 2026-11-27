@@ -5,7 +5,7 @@ cask "trawlr" do
   url "https://github.com/SamuelCGilbert/trawlr/releases/download/v#{version}/trawlr-#{version}-macos.pkg"
   name "Trawlr"
   desc "Instant file name search with an always-current index"
-  homepage "https://trawlr.io"
+  homepage "https://trawlr.io/"
 
   livecheck do
     url :url
