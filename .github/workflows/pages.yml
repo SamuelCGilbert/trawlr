@@ -53,11 +53,15 @@ jobs:
           sudo apt-get -qq update
           sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y --no-install-recommends \
             apt-utils createrepo-c rpm pacman-package-manager makepkg libarchive-tools zstd >/dev/null
-          export GNUPGHOME=$(mktemp -d)
-          printf '%s\n' "$SIGNING_KEY_ASC" | gpg --batch -q --import
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D pkgs -p '*.deb' -p '*.rpm' -p '*.pkg.tar.zst'
+          # The signing key is an environment secret of github-pages, which
+          # only main can deploy to. It lives in a keyring for this step only,
+          # gone (agent included) even if signing fails.
+          export GNUPGHOME=$(mktemp -d)
+          trap 'gpgconf --kill all; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s\n' "$SIGNING_KEY_ASC" | gpg --batch -q --import
+          unset SIGNING_KEY_ASC
           sh dist/repo/build.sh pkgs _site
-          rm -rf "$GNUPGHOME"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
