@@ -269,7 +269,7 @@ void MainWindow::buildMenus()
 {
     // Every action with an id can be given another key in Tools > Options.
     auto reg = [this](QMenu *menu, const QString &id, QAction *a, const QKeySequence &key) {
-        m_commands.append({id, a, key, menu->title().remove(QLatin1Char('&')) + QStringLiteral(" > ") + a->text().remove(QLatin1Char('&'))});
+        m_commands.append({id, a, key.isEmpty() ? Shortcuts::Keys() : Shortcuts::Keys{key}, menu->title().remove(QLatin1Char('&')) + QStringLiteral(" > ") + a->text().remove(QLatin1Char('&'))});
     };
     auto add = [this, reg](QMenu *menu, const QString &id, const QString &text, const QKeySequence &key, std::function<void()> fn, bool needsSelection = false) {
         QAction *a = menu->addAction(text);
@@ -304,7 +304,8 @@ void MainWindow::buildMenus()
 
     QMenu *edit = menuBar()->addMenu(tr("&Edit"));
     add(edit, "edit.selectAll", tr("Select &All"), QKeySequence(), [this] { m_view->selectAll(); m_view->setFocus(); });
-    add(edit, "edit.focusSearch", tr("&Focus Search Box"), QKeySequence(Qt::CTRL | Qt::Key_L), [this] { m_search->setFocus(); m_search->selectAll(); });
+    add(edit, "edit.focusSearch", tr("&Focus Search Box"), QKeySequence(Qt::CTRL | Qt::Key_F), [this] { m_search->setFocus(); m_search->selectAll(); });
+    m_commands.last().defaultKeys << QKeySequence(Qt::CTRL | Qt::Key_L); // as in a browser's address bar
 
     QMenu *search = menuBar()->addMenu(tr("&Search"));
     auto toggle = [search, reg](const QString &id, const QString &text, const QKeySequence &key) {
@@ -488,14 +489,14 @@ QList<CommandInfo> MainWindow::commands() const
 {
     QList<CommandInfo> out;
     for (const Command &c : m_commands)
-        out.append({c.id, c.label, c.defaultKey});
+        out.append({c.id, c.label, c.defaultKeys});
     return out;
 }
 
 void MainWindow::applyShortcuts()
 {
     for (const Command &c : std::as_const(m_commands))
-        c.action->setShortcuts(Shortcuts::effective(c.id, c.defaultKey));
+        c.action->setShortcuts(Shortcuts::effective(c.id, c.defaultKeys));
 }
 
 void MainWindow::applySettings(bool searchSwitches)

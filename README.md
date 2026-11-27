@@ -178,6 +178,7 @@ Plasma), or bind a key to the command `trawlr` in your desktop's keyboard settin
 | type | search as you type |
 | `↓` / `↑` | move into and through the results |
 | `Enter` | open with the default application |
+| `Ctrl+F` or `Ctrl+L` | back to the search box from the results |
 | `Ctrl+N` | new window |
 | `Ctrl+,` | options |
 | `Ctrl+Enter` | open the containing folder with the item selected |

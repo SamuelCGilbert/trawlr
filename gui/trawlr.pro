@@ -3,7 +3,7 @@ QT += widgets network
 CONFIG += c++17 release warn_on
 TEMPLATE = app
 TARGET = trawlr-gui
-VERSION = 0.1.0
+VERSION = 0.1.1
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 SOURCES += src/main.cpp src/client.cpp src/resultstore.cpp src/resultsview.cpp src/mainwindow.cpp \

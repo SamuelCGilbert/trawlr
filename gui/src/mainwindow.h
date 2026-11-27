@@ -63,7 +63,7 @@ private:
     struct Command {
         QString id;
         QAction *action;
-        QKeySequence defaultKey;
+        Shortcuts::Keys defaultKeys;
         QString label;
     };
 

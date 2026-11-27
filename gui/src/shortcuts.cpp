@@ -8,16 +8,11 @@ static QString settingsKey(const QString &id)
     return QStringLiteral("shortcuts/") + id;
 }
 
-Shortcuts::Keys Shortcuts::defaults(const QKeySequence &defaultKey)
-{
-    return defaultKey.isEmpty() ? Keys() : Keys{defaultKey};
-}
-
-Shortcuts::Keys Shortcuts::effective(const QString &id, const QKeySequence &defaultKey)
+Shortcuts::Keys Shortcuts::effective(const QString &id, const Keys &defaults)
 {
     QSettings s;
     if (!s.contains(settingsKey(id)))
-        return defaults(defaultKey);
+        return defaults;
     // Older versions stored one key; that parses as a list of one.
     Keys keys;
     for (const QKeySequence &k : QKeySequence::listFromString(s.value(settingsKey(id)).toString(), QKeySequence::PortableText))
@@ -26,10 +21,10 @@ Shortcuts::Keys Shortcuts::effective(const QString &id, const QKeySequence &defa
     return keys;
 }
 
-void Shortcuts::save(const QString &id, const Keys &keys, const QKeySequence &defaultKey)
+void Shortcuts::save(const QString &id, const Keys &keys, const Keys &defaults)
 {
     QSettings s;
-    if (keys == defaults(defaultKey))
+    if (keys == defaults)
         s.remove(settingsKey(id));
     else
         s.setValue(settingsKey(id), QKeySequence::listToString(keys, QKeySequence::PortableText));

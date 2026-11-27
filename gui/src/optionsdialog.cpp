@@ -121,7 +121,7 @@ OptionsDialog::OptionsDialog(const QList<CommandInfo> &commands, QWidget *parent
 {
     setWindowTitle(tr("Options"));
     for (const CommandInfo &c : m_commands)
-        m_keys.insert(c.id, Shortcuts::effective(c.id, c.defaultKey));
+        m_keys.insert(c.id, Shortcuts::effective(c.id, c.defaultKeys));
 
     // Left: the settings search and the page list.
     m_settingsSearch = new QLineEdit(this);
@@ -192,7 +192,7 @@ OptionsDialog::OptionsDialog(const QList<CommandInfo> &commands, QWidget *parent
     });
     addPage(tr("Keyboard"), tr("keys keybindings key bindings shortcuts hotkeys accelerators"), buildKeyboardPage(), [this] {
         for (const CommandInfo &c : std::as_const(m_commands)) {
-            m_keys[c.id] = Shortcuts::defaults(c.defaultKey);
+            m_keys[c.id] = c.defaultKeys;
             showRow(c.id);
         }
         commandChanged();
@@ -666,8 +666,8 @@ QWidget *OptionsDialog::buildKeyboardPage()
         if (!c)
             return;
         m_keys[id].clear();
-        if (!c->defaultKey.isEmpty())
-            addShortcut(id, c->defaultKey);
+        for (const QKeySequence &k : c->defaultKeys)
+            addShortcut(id, k);
         showRow(id);
         commandChanged();
     });
@@ -707,7 +707,7 @@ void OptionsDialog::showRow(const QString &id)
         return;
     it->setText(1, Shortcuts::text(m_keys.value(id)));
     QFont f = it->font(1);
-    f.setBold(m_keys.value(id) != Shortcuts::defaults(c->defaultKey)); // changed ones stand out
+    f.setBold(m_keys.value(id) != c->defaultKeys); // changed ones stand out
     it->setFont(1, f);
 }
 
@@ -729,7 +729,7 @@ void OptionsDialog::commandChanged()
     m_add->setEnabled(c != nullptr);
     m_edit->setEnabled(m_keyList->currentItem() != nullptr);
     m_remove->setEnabled(m_keyList->currentItem() != nullptr);
-    m_default->setEnabled(c && m_keys.value(id) != Shortcuts::defaults(c->defaultKey));
+    m_default->setEnabled(c && m_keys.value(id) != c->defaultKeys);
 }
 
 void OptionsDialog::filterCommands()
@@ -1035,7 +1035,7 @@ bool OptionsDialog::apply()
     if (!applyGlobalHotkeys())
         return false; // stay open so it can be changed
     for (const CommandInfo &c : std::as_const(m_commands))
-        Shortcuts::save(c.id, m_keys.value(c.id), c.defaultKey);
+        Shortcuts::save(c.id, m_keys.value(c.id), c.defaultKeys);
     QSettings s;
     s.setValue(kMultiple, m_multiple->isChecked());
     s.setValue(kTray, m_tray->isChecked());

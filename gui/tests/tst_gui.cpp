@@ -471,7 +471,7 @@ private slots:
     {
         const QKeySequence orig(Qt::CTRL | Qt::Key_I), mine(Qt::CTRL | Qt::ALT | Qt::Key_M);
         QCOMPARE(action("Match Case")->shortcut(), orig);
-        Shortcuts::save("search.matchCase", mine, orig);
+        Shortcuts::save("search.matchCase", {mine}, {orig});
         MainWindow::applyShortcutsToAll();
         QCOMPARE(action("Match Case")->shortcut(), mine);
         QVERIFY(!action("Match Case")->isChecked());
@@ -484,10 +484,10 @@ private slots:
         action("Match Case")->trigger();
 
         // A removed shortcut stays removed; going back to the default forgets the override.
-        Shortcuts::save("search.matchCase", QKeySequence(), orig);
+        Shortcuts::save("search.matchCase", {}, {orig});
         MainWindow::applyShortcutsToAll();
         QVERIFY(action("Match Case")->shortcut().isEmpty());
-        Shortcuts::save("search.matchCase", orig, orig);
+        Shortcuts::save("search.matchCase", {orig}, {orig});
         MainWindow::applyShortcutsToAll();
         QCOMPARE(action("Match Case")->shortcut(), orig);
         QVERIFY(!QSettings().contains("shortcuts/search.matchCase"));
@@ -496,8 +496,8 @@ private slots:
     void optionsDialogEditsShortcuts()
     {
         const QList<CommandInfo> cmds = {
-            {"t.one", "Test > One", QKeySequence(Qt::CTRL | Qt::Key_1)},
-            {"t.two", "Test > Two", QKeySequence()},
+            {"t.one", "Test > One", {QKeySequence(Qt::CTRL | Qt::Key_1)}},
+            {"t.two", "Test > Two", {}},
         };
         QSettings().remove("shortcuts/t.one");
         QSettings().remove("shortcuts/t.two");
@@ -524,9 +524,9 @@ private slots:
 
         multi->setChecked(true);
         dlg.accept();
-        QCOMPARE(Shortcuts::effective("t.one", cmds[0].defaultKey), Shortcuts::Keys());
+        QCOMPARE(Shortcuts::effective("t.one", cmds[0].defaultKeys), Shortcuts::Keys());
         const Shortcuts::Keys two{QKeySequence(Qt::CTRL | Qt::Key_1), QKeySequence(Qt::CTRL | Qt::Key_2)};
-        QCOMPARE(Shortcuts::effective("t.two", cmds[1].defaultKey), two);
+        QCOMPARE(Shortcuts::effective("t.two", cmds[1].defaultKeys), two);
         QVERIFY(OptionsDialog::allowMultipleWindows());
 
         // Restore Defaults on the Keyboard page puts both back (once saved).
@@ -535,16 +535,35 @@ private slots:
         QCOMPARE(again.currentPage(), QStringLiteral("Keyboard"));
         again.restorePageDefaults();
         again.accept();
-        QCOMPARE(Shortcuts::effective("t.one", cmds[0].defaultKey), Shortcuts::Keys{cmds[0].defaultKey});
+        QCOMPARE(Shortcuts::effective("t.one", cmds[0].defaultKeys), cmds[0].defaultKeys);
         QVERIFY(!QSettings().contains("shortcuts/t.one"));
         QVERIFY(!QSettings().contains("shortcuts/t.two"));
         QSettings().setValue("general/allowMultipleWindows", false);
     }
 
+    void ctrlFGoesBackToTheSearchBox()
+    {
+        m_win->activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(m_win));
+        m_search->setText("rs");
+        QTRY_COMPARE(status(), QStringLiteral("2 items"));
+        // Both Ctrl+F and Ctrl+L, from the list, with the text chosen to type over.
+        for (Qt::Key key : {Qt::Key_F, Qt::Key_L}) {
+            QTest::keyClick(m_search, Qt::Key_Down);
+            QVERIFY(m_view->hasFocus());
+            QTest::keyClick(m_view, key, Qt::ControlModifier);
+            QVERIFY(m_search->hasFocus());
+            QCOMPARE(m_search->selectedText(), QStringLiteral("rs"));
+        }
+        QCOMPARE(action("Focus Search Box")->shortcuts(),
+                 (QList<QKeySequence>{QKeySequence(Qt::CTRL | Qt::Key_F), QKeySequence(Qt::CTRL | Qt::Key_L)}));
+        m_search->clear();
+    }
+
     void severalKeysWorkInTheWindow()
     {
         const QKeySequence orig(Qt::CTRL | Qt::Key_I), extra(Qt::CTRL | Qt::ALT | Qt::Key_J);
-        Shortcuts::save("search.matchCase", Shortcuts::Keys{orig, extra}, orig);
+        Shortcuts::save("search.matchCase", {orig, extra}, {orig});
         MainWindow::applyShortcutsToAll();
         QCOMPARE(action("Match Case")->shortcuts().size(), 2);
         m_win->activateWindow();
@@ -553,7 +572,7 @@ private slots:
         QVERIFY(action("Match Case")->isChecked());
         QTest::keyClick(m_win, Qt::Key_I, Qt::ControlModifier);
         QVERIFY(!action("Match Case")->isChecked());
-        Shortcuts::save("search.matchCase", Shortcuts::Keys{orig}, orig);
+        Shortcuts::save("search.matchCase", {orig}, {orig});
         MainWindow::applyShortcutsToAll();
         QVERIFY(!QSettings().contains("shortcuts/search.matchCase"));
     }
@@ -577,8 +596,8 @@ private slots:
     void optionsSearch()
     {
         OptionsDialog dlg(QList<CommandInfo>{
-            {"file.copyPath", "File > Copy Full Path", QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C)},
-            {"search.regex", "Search > Enable Regex", QKeySequence(Qt::CTRL | Qt::Key_R)},
+            {"file.copyPath", "File > Copy Full Path", {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C)}},
+            {"search.regex", "Search > Enable Regex", {QKeySequence(Qt::CTRL | Qt::Key_R)}},
         });
         dlg.show();
         QVERIFY(QTest::qWaitForWindowActive(&dlg));
